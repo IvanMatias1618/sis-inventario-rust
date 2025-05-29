@@ -1,0 +1,32 @@
++-----------------+        1     * +-------------------+
+|     Producto    | <------------- |  IngredienteReceta |
++-----------------+                +-------------------+
+| - id: String    |                | - producto_id: String |
+| - nombre: String|                | - cantidad: u32   |
+| - cantidad: u32 |                +-------------------+
+| - stock_minimo_alerta: u32 |                  ^
++-----------------+                  | *
+        ^                            |
+        |                            |
+        |                            |
+        |                            |
++-----------------+        1      +-----------------+
+|     Receta      | <------------- |     Venta       |
++-----------------+                +-----------------+
+| - id: String    |                | - id: String    |
+| - nombre: String|                | - fecha: DateTime |
+| - ingredientes: Vec<IngredienteReceta> |  - receta_id: String (o Vec<ProductoVendido>) |
++-----------------+                | - empleado_id: String |
+                                   | - total: f32    |
+                                   +-----------------+
+                                            ^
+                                            | 1
+                                            |
+                                   +-----------------+
+                                   |    Empleado     |
+                                   +-----------------+
+                                   | - id: String    |
+                                   | - nombre: String|
+                                   | - password_hash: String |
+                                   | - rol: RolEnum  |
+                                   +-----------------+

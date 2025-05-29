@@ -1,0 +1,58 @@
+graph LR
+    subgraph UI [Capa de Presentación]
+        A(Interfaz de Línea de Comandos / CLI)
+    end
+
+    subgraph Application [Capa de Aplicación / Servicios]
+        B(Servicio de Inventario)
+        C(Servicio de Ventas)
+        D(Servicio de Empleados)
+        E(Servicio de Reportes)
+    end
+
+    subgraph Domain [Capa de Dominio / Lógica de Negocio Pura]
+        F(Reglas de Negocio)
+        G(Modelos de Datos / Structs)
+        H(Validadores de Negocio)
+    end
+
+    subgraph Infrastructure [Capa de Infraestructura / Persistencia]
+        I(Implementación de Repositorios (JSON/CSV/DB))
+        J(Gestión de Configuración)
+        K(Gestión de Registro / Logging)
+        L(Generación de IDs Únicos)
+    end
+
+    A --> B
+    A --> C
+    A --> D
+    A --> E
+
+    B --> F
+    B --> G
+    B --> H
+    C --> F
+    C --> G
+    C --> H
+    D --> F
+    D --> G
+    D --> H
+    E --> G
+    E --> H
+
+    F --> I
+    G --> I
+    H --> I
+
+    B --> J
+    C --> J
+    D --> J
+    E --> J
+
+    B --> K
+    C --> K
+    D --> K
+    E --> K
+
+    F --> L
+    G --> L
