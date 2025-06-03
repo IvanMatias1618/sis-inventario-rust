@@ -29,10 +29,23 @@ pub mod loop_principal {
             println!("Cual es el precio del insumo");
             let precio: u32 = auxiliares::no_es_cero();
             println!("creando insumo..");
-            let mut insumo = negocio::Insumo::nuevo(nombre, cantidad, precio, cantidad_minima);
+            let mut insumo = match negocio::Insumo::nuevo(nombre, cantidad, precio, cantidad_minima)
+            {
+                Ok(insumo) => insumo,
+                Err(e) => {
+                    println!("ocurrio un error al crear el insumo: {}", e);
+                    continue;
+                }
+            };
             println!("cuantos gramos queres usar voludo?");
             let cantidad: u32 = auxiliares::no_es_cero();
-            insumo.usar(cantidad).unwrap();
+            match insumo.usar(cantidad) {
+                Ok(_) => println!("Se han usado: {} gramos", cantidad),
+                Err(e) => {
+                    println!("ocurrio un error al usar el insumo: {}", e);
+                    continue;
+                }
+            };
             println!(
                 "la cantidad actual de tu insumo es {}",
                 insumo.obtener_cantidad()
@@ -114,14 +127,48 @@ pub mod negocio {
     }
 
     impl Insumo {
-        pub fn nuevo(nombre: String, cantidad: u32, precio: u32, cantidad_minima: u32) -> Insumo {
-            Insumo {
+        pub fn nuevo(
+            nombre: String,
+            cantidad: u32,
+            precio: u32,
+            cantidad_minima: u32,
+        ) -> AppResult<Insumo> {
+            let nombre = if !nombre.is_empty() {
+                nombre
+            } else {
+                return Err(AppError::DatoInvalido(
+                    "el nombre no puede estar vacio".to_string(),
+                ));
+            };
+            let cantidad = if cantidad > 0 {
+                cantidad
+            } else {
+                return Err(AppError::DatoInvalido(
+                    "La cantidad no puede ser 0.".to_string(),
+                ));
+            };
+            let precio = if precio > 0 {
+                precio
+            } else {
+                return Err(AppError::DatoInvalido(
+                    "el precio no debe ser 0.".to_string(),
+                ));
+            };
+            let cantidad_minima = if cantidad_minima > 0 {
+                cantidad_minima
+            } else {
+                return Err(AppError::DatoInvalido(
+                    " la cantidad_minima no deberia ser 0".to_string(),
+                ));
+            };
+
+            Ok(Insumo {
                 id: Uuid::new_v4(),
                 nombre,
                 cantidad,
                 precio,
                 cantidad_minima,
-            }
+            })
         }
         pub fn usar(&mut self, cantidad: u32) -> AppResult<()> {
             if cantidad < self.cantidad {
