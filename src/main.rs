@@ -40,7 +40,7 @@ pub mod loop_principal {
             println!("cuantos gramos queres usar voludo?");
             let cantidad: u32 = auxiliares::no_es_cero();
             match insumo.usar(cantidad) {
-                Ok(_) => println!("Se han usado: {} gramos", cantidad),
+                Ok(_) => (),
                 Err(e) => {
                     println!("ocurrio un error al usar el insumo: {}", e);
                     continue;
@@ -173,6 +173,10 @@ pub mod negocio {
         pub fn usar(&mut self, cantidad: u32) -> AppResult<()> {
             if cantidad < self.cantidad {
                 self.cantidad -= cantidad;
+                println!("se han usado: {} gramos", cantidad);
+                if self.alerta_cantidad_minima() {
+                    println!("Alerta! la cantidad del insumo es baja.: {}", self.cantidad);
+                }
                 return Ok(());
             }
             Err(AppError::ErrorPersonal(
