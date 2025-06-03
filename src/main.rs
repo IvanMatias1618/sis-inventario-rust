@@ -59,7 +59,7 @@ pub mod auxiliares {
     pub fn no_es_cero() -> u32 {
         loop {
             let mut buffer = String::new(); // Create a new, empty string for each iteration
-                                            // This clears the previous input
+            // This clears the previous input
 
             // 1. Correct syntax for read_line and expect
             io::stdin()
@@ -101,6 +101,8 @@ pub mod auxiliares {
 pub mod negocio {
     //Esta capa del programa se encargara de la virtualizacion de entidades en memoria y
     //su gestion bajo las reglas logicas del negocio.
+
+    use core::f64;
 
     //IMPLEMENTAR VALIDACIONES :3
     //
@@ -193,33 +195,56 @@ pub mod negocio {
         pub fn obtener_cantidad(&self) -> u32 {
             self.cantidad
         }
+        pub fn obtener_costo_por_gramo(&self) -> f64 {
+            self.precio as f64 / 1000.00
+        }
     }
 
-    pub struct Receta {
+    pub struct Receta<'a> {
         id: Uuid,
         nombre: String,
-        ingredientes: Vec<(Insumo, u32)>,
-        costo: u32,
+        ingredientes: Vec<(&'a Insumo, u32)>,
+        costo: f64,
     }
 
-    impl Receta {
-        pub fn nuevo(nombre: String, ingredientes: Vec<(Insumo, u32)>, costo: u32) -> Receta {
-            Receta {
+    impl<'a> Receta<'a> {
+        pub fn nuevo(nombre: String, ingredientes: Vec<(&Insumo, u32)>) -> AppResult<Receta> {
+            let nombre = if !nombre.is_empty() {
+                nombre
+            } else {
+                return Err(AppError::DatoInvalido(
+                    "el nombre no deberia estar vacio".to_string(),
+                ));
+            };
+            let ingredientes = if !ingredientes.is_empty() {
+                ingredientes
+            } else {
+                return Err(AppError::DatoInvalido(
+                    "la lista de ingredientes esta vacia".to_string(),
+                ));
+            };
+            let mut receta = Receta {
                 id: Uuid::new_v4(),
                 nombre,
                 ingredientes,
-                costo,
-            }
+                costo: 0.0,
+            };
+            receta.calcularcosto();
+            Ok(receta)
         }
 
-        pub fn calcularcosto() {
-            ()
+        fn calcularcosto(&mut self) {
+            let mut costo: f64 = 0.0;
+            for (insumo, cantidad) in &self.ingredientes {
+                costo += insumo.obtener_costo_por_gramo() * (*cantidad as f64);
+            }
+            self.costo = costo
         }
     }
 
     pub struct Venta<Tz: chrono::TimeZone> {
         fecha: DateTime<Tz>,
-        carrito: Vec<Receta>,
+        //carrito: Vec<Receta>,
         //cliente_id: Uuid,
         //cliente: String,
         total: f32,
