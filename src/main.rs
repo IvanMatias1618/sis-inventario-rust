@@ -3,25 +3,47 @@
 
 fn main() {
     //Es buena practica dejar esta weada aquí para saber que todo esta al cien 7u7
+    use crate::negocio;
+    use std::io;
 
-    println!("Hello, world!");
-    loop_principal::principal();
+    let escuchar_teclado = io::stdin();
+
+    let mut nombre: String = String::new();
+    println!("Cual sera el nombre del insumo?");
+    escuchar_teclado
+        .read_line(&mut nombre)
+        .expect("Error al leer el teclado");
+    let mut insumo = loops::crear_insumo(&nombre);
+    println!("insumo creado.\n Creando Almacen");
+    let mut almacen = negocio::Almacen::nuevo();
+    println!("Almacen creado.\nAñadiendo el insumo al almacen");
+    almacen.añadir(nombre.clone(), insumo);
+    println!("Se creara una receta con el ingrediente {}", &nombre);
+    println!("cuantos gramos se usaran?");
+    let cantida = auxiliares::no_es_cero();
+    let cantidad: f64 = cantida as f64;
+    let mut ingredientes = Vec::new();
+    let tupla = (nombre.clone(), cantidad);
+    ingredientes.push(tupla);
+    let mut receta: String = String::new();
+    println!("Cual sera el nombre de la receta?");
+    escuchar_teclado
+        .read_line(&mut receta)
+        .expect("Error al leer el teclado");
+    match negocio::Receta::nuevo(nombre, ingredientes, &almacen) {
+        Ok(receta) => println!("El costo de la receta es: {}", receta.costo()),
+        Err(e) => println!("hubo un error al crear la receta: {}", e),
+    };
 }
 
-pub mod loop_principal {
+pub mod loops {
 
     use crate::auxiliares;
     use crate::negocio;
     use std::io;
 
-    pub fn principal() {
-        let escuchar_teclado = io::stdin();
+    pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
         loop {
-            let mut nombre: String = String::new();
-            println!("Cual sera el nombre del insumo?");
-            escuchar_teclado
-                .read_line(&mut nombre)
-                .expect("Error al leer el teclado");
             println!("Cual es la cantidad en gramos del insumo");
             let cantidad: u32 = auxiliares::no_es_cero();
             println!("Cual es la cantidad minima de gramos");
@@ -29,29 +51,16 @@ pub mod loop_principal {
             println!("Cual es el precio del insumo");
             let precio: u32 = auxiliares::no_es_cero();
             println!("creando insumo..");
-            let mut insumo = match negocio::Insumo::nuevo(nombre, cantidad, precio, cantidad_minima)
-            {
-                Ok(insumo) => insumo,
+            match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
+                Ok(insumo) => return insumo,
                 Err(e) => {
                     println!("ocurrio un error al crear el insumo: {}", e);
                     continue;
                 }
             };
-            println!("cuantos gramos queres usar voludo?");
-            let cantidad: u32 = auxiliares::no_es_cero();
-            match insumo.usar(cantidad) {
-                Ok(_) => (),
-                Err(e) => {
-                    println!("ocurrio un error al usar el insumo: {}", e);
-                    continue;
-                }
-            };
-            println!(
-                "la cantidad actual de tu insumo es {}",
-                insumo.obtener_cantidad()
-            )
         }
     }
+    //Trabajar en un loop de comandos, nos servira para la primera interfaz de usuario.
 }
 pub mod auxiliares {
     use std::io;
@@ -116,8 +125,8 @@ pub mod negocio {
     //
     use crate::auxiliares::{AppError, AppResult};
     use chrono::{DateTime, TimeZone}; //Esto de acá es para la fecha.
+    use std::collections::HashMap;
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
-
     //Estructuras de datos que se usaran en Virtualizacion.
     pub struct Insumo {
         //Simulacion de un insumo
@@ -198,47 +207,91 @@ pub mod negocio {
         pub fn obtener_costo_por_gramo(&self) -> f64 {
             self.precio as f64 / 1000.00
         }
+        pub fn costo_por_gramos(&self, cantidad: f64) -> f64 {
+            let gramo_precio = self.obtener_costo_por_gramo();
+            gramo_precio * (cantidad)
+        }
     }
 
-    pub struct Receta<'a> {
+    //se necesita un lifetime aqui?
+    pub struct Almacen {
+        bodega: HashMap<String, Insumo>,
+    }
+
+    impl Almacen {
+        pub fn nuevo() -> Self {
+            Almacen {
+                bodega: HashMap::new(),
+            }
+        }
+        pub fn añadir(&mut self, clave: String, insumo: Insumo) {
+            self.bodega.insert(clave, insumo);
+        }
+    }
+    pub struct Receta {
         id: Uuid,
         nombre: String,
-        ingredientes: Vec<(&'a Insumo, u32)>,
+        ingredientes: Vec<(String, f64)>,
         costo: f64,
     }
 
-    impl<'a> Receta<'a> {
-        pub fn nuevo(nombre: String, ingredientes: Vec<(&Insumo, u32)>) -> AppResult<Receta> {
-            let nombre = if !nombre.is_empty() {
-                nombre
-            } else {
+    impl<'a> Receta {
+        pub fn nuevo(
+            nombre: String,
+            ingredientes: Vec<(String, f64)>,
+            almacen: &'a Almacen,
+        ) -> AppResult<Receta> {
+            if nombre.is_empty() {
                 return Err(AppError::DatoInvalido(
                     "el nombre no deberia estar vacio".to_string(),
                 ));
             };
-            let ingredientes = if !ingredientes.is_empty() {
-                ingredientes
+            if !ingredientes.is_empty() {
+                for (ingrediente, _) in &ingredientes {
+                    if almacen.bodega.contains_key(ingrediente) {
+                        continue;
+                    } else {
+                        return Err(AppError::DatoInvalido(format!(
+                            "el ingrediente: '{}'",
+                            ingrediente
+                        )));
+                    }
+                }
             } else {
                 return Err(AppError::DatoInvalido(
                     "la lista de ingredientes esta vacia".to_string(),
                 ));
             };
+
             let mut receta = Receta {
                 id: Uuid::new_v4(),
                 nombre,
                 ingredientes,
                 costo: 0.0,
             };
-            receta.calcularcosto();
+            receta.calcular_costo(almacen)?;
             Ok(receta)
         }
 
-        fn calcularcosto(&mut self) {
+        fn calcular_costo(&mut self, almacen: &Almacen) -> AppResult<()> {
             let mut costo: f64 = 0.0;
-            for (insumo, cantidad) in &self.ingredientes {
-                costo += insumo.obtener_costo_por_gramo() * (*cantidad as f64);
+            for (nombre, cantidad) in &self.ingredientes {
+                if let Some(insumo) = almacen.bodega.get(nombre) {
+                    costo += insumo.costo_por_gramos(*cantidad);
+                } else {
+                    return Err(AppError::ErrorPersonal(format!(
+                        "Advertencia: El ingrediente: {}, no existe en el almacen.",
+                        nombre
+                    )));
+                }
+                //espera, como llamamos al almacen :u
             }
-            self.costo = costo
+            self.costo = costo;
+            Ok(())
+        }
+
+        pub fn costo(&self) -> f64 {
+            self.costo
         }
     }
 
