@@ -227,6 +227,24 @@ pub mod negocio {
         pub fn añadir(&mut self, clave: String, insumo: Insumo) {
             self.bodega.insert(clave, insumo);
         }
+        pub fn buscar_clave(&self, busqueda: &str) {
+            use strsim::levenshtein;
+            let probables: Vec<_> = self
+                .bodega
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            println!("Coincidencias: {:?}", probables);
+
+            let probables = self
+                .bodega
+                .keys()
+                .min_by_key(|nombre| levenshtein(nombre, busqueda));
+            match probables {
+                Some(nombre) => println!("O quisiste decir: {}?", nombre),
+                None => println!("No se encontraron coincidencias. "),
+            };
+        }
     }
     pub struct Receta {
         id: Uuid,
@@ -293,6 +311,55 @@ pub mod negocio {
         pub fn costo(&self) -> f64 {
             self.costo
         }
+        pub fn nombre(&self) -> &String {
+            &self.nombre
+        }
+    }
+    pub struct Recetario {
+        recetas: HashMap<String, Receta>,
+    }
+
+    impl Recetario {
+        pub fn nuevo() -> Self {
+            Recetario {
+                recetas: HashMap::new(),
+            }
+        }
+
+        pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
+            if *nombre != receta.nombre {
+                return Err(AppError::DatoInvalido(format!(
+                    "la receta: {} no existe. te refieres a: {}?",
+                    nombre,
+                    receta.nombre()
+                )));
+            }
+            self.recetas.insert(nombre.clone(), receta);
+            Ok(())
+        }
+
+        /*
+                 QUIZA USEMOS UN TRAIT DE BUSQUEDA JEJE
+        */
+
+        pub fn buscar_clave(&self, busqueda: &str) {
+            use strsim::levenshtein;
+            let probables: Vec<_> = self
+                .recetas
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            println!("Coincidencias: {:?}", probables);
+
+            let probables = self
+                .recetas
+                .keys()
+                .min_by_key(|nombre| levenshtein(nombre, busqueda));
+            match probables {
+                Some(nombre) => println!("O quisiste decir: {}?", nombre),
+                None => println!("No se encontraron coincidencias. "),
+            };
+        }
     }
 
     pub struct Venta<Tz: chrono::TimeZone> {
@@ -311,7 +378,27 @@ pub mod negocio {
         rol: String,
     }
 
-    impl Empleado {}
+    impl Empleado {
+        pub fn nuevo(nombre: &String, rol: String, psswd: &str) -> AppResult<Empleado> {
+            if nombre.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "el nombre no puede estar vacio".to_string(),
+                ));
+            }
+            if rol.is_empty() {
+                return Err(AppError::DatoInvalido("El rol esta vacio".to_string()));
+            }
+
+            use bcrypt::{hash, verify};
+            let contraseña = hash(psswd, 12).expect("Error al encriptar la contraseña");
+            Ok(Empleado {
+                id: Uuid::new_v4(),
+                nombre: nombre.clone(),
+                contra_hash: contraseña,
+                rol,
+            })
+        }
+    }
 
     pub struct Reporte {
         operador: &'static Uuid,
