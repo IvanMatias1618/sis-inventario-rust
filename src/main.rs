@@ -24,9 +24,42 @@ fn main() {
 pub mod loops {
 
     use crate::auxiliares;
+    use crate::auxiliares::solicitar_ingredientes;
     use crate::negocio;
     use std::io;
 
+    pub fn principal() {
+        use crate::servicio;
+        use crate::negocio;
+
+        let mut almacen = servicio::almacen::nuevo();
+        
+        loop {
+            println!("Hola! Bienvenid@ a tu inventario :3");
+            println!("que queres hacer pequeñ@ amig@?  \n
+                1) Salir del programa. \n
+                2) Crear un insumo.  \n
+                3) Crear una receta. ");
+            let numero: u32 = no_es_cero();
+            match numero{
+                1 => return (),
+                2 => {
+                    let nombre:String = solicitar_texto();
+                    let mut insumo = crear_insumo(&nombre);
+                    almacen.añadir(&nombre, insumo);                     
+                }
+                3 => {
+                    let mut nombre: String = String::new();
+▍                   println!("Que nombre quieres para tu receta?=");
+▍                   nombre = solicitar_texto();
+                    ingredientes: vec<(String, f64)> = solicitar_ingredientes(&almacen);
+                    let receta: negocio::Receta = nogocio::Receta::nuevo(nombre, ingredientes);            
+                } 
+                _ => continue,
+            }
+            
+        }
+    }
     pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
         loop {
             println!("Cual es la cantidad en gramos del insumo");
@@ -48,8 +81,54 @@ pub mod loops {
     //Trabajar en un loop de comandos, nos servira para la primera interfaz de usuario.
 }
 pub mod auxiliares {
-    use std::io;
+    use std::{intrinsics::ptr_offset_from_unsigned, io};
+    use crate::servicio;
 
+    pub fn solicitar_ingredientes(almacen: &servicio::Almacen) -> Vec<(String, f64)> {
+        let mut ingredientes:Vec<(String, f64)> = Vec::new();
+        loop {
+            println!("que ingrediente quieres usar para tu receta?");
+            let mut ingrediente: String = solicitar_texto();
+            almacen.buscar_clave(&ingrediente.as_str());
+            println!("ingresa nuevamente el nombre del insumo:");
+            println!("Quieres escribir nuevamente el nombre de tu insumo? \n
+                1) si \n
+                2) no, seguir con este nombre");
+            //Aqui obtenemos el &Insumo del almacen y lo pasamos al vec de ingredientes para pasarlo a funcion nuevo() de receta
+            let mut res = no_es_cero();
+            match res {
+                1 => continue,
+                2 => (),
+                3 => continue,
+            }
+            println!("cuantos gramos queres usar?");
+            res = no_es_cero();
+            let res: f64 = res as f64;
+            let conjunto = (ingrediente,res);
+            ingredientes.push(conjunto);
+            println!("Quieres añadir mas ingredientes a esta receta?\n
+                1) si. \n
+                2) no, es todo.");
+            let res = no_es_cero();
+            match res {
+                1 => continue,
+                2 => break,
+                _ => continue,
+            }
+        }
+    }
+    
+
+    pub fn solicitar_texto() -> String {
+        loop {
+           let mut buffer = String::new();
+           io::stdin().read_line(&mut buffer).expect("Error al leer el teclado.");
+           if buffer.trim().is_empty() {
+               println!("el texto no deberia estar vacio, preuba nuevamente:");
+               continue;
+           }
+           return buffer;
+    }
     pub fn no_es_cero() -> u32 {
         loop {
             let mut buffer = String::new(); // Create a new, empty string for each iteration
@@ -110,7 +189,6 @@ pub mod negocio {
     //
     use crate::auxiliares::{AppError, AppResult};
     use chrono::{DateTime, TimeZone};
-    use rusqlite::ffi::SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER;
     //Esto de acá es para la fecha.
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
     //Estructuras de datos que se usaran en Virtualizacion.
@@ -255,9 +333,9 @@ pub mod negocio {
 
     pub struct Venta<Tz: chrono::TimeZone> {
         fecha: DateTime<Tz>,
-        //carrito: Vec<Receta>,
+        carrito: Vec<(Receta, u32)>,
         //cliente_id: Uuid,
-        //cliente: String,
+        cliente: String,
         total: f32,
         empleado: Uuid,
     }
@@ -290,14 +368,10 @@ pub mod negocio {
             })
         }
     }
-
-    pub struct Reporte {
-        operador: &'static Uuid,
-    } //
 }
 
 pub mod servicio {
-    use crate::auxiliares::{AppError, AppResult};
+    use crate::auxiliares::{AppError, AppResult, solicitar_texto, no_es_cero};
     use crate::negocio::{Insumo, Receta};
     use std::collections::HashMap;
 
@@ -332,6 +406,24 @@ pub mod servicio {
                 None => println!("No se encontraron coincidencias. "),
             };
         }
+        pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
+           loop {
+               println!("Cual es la cantidad en gramos del insumo");
+               let cantidad: u32 = auxiliares::no_es_cero();
+               println!("Cual es la cantidad minima de gramos");
+               let cantidad_minima: u32 = auxiliares::no_es_cero();
+            println!("Cual es el precio del insumo");
+            let precio: u32 = auxiliares::no_es_cero();
+            println!("creando insumo..");
+               match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
+                Ok(insumo) => return insumo,
+                   Err(e) => {
+                    println!("ocurrio un error al crear el insumo: {}", e);
+                    continue;
+                }
+            };
+        }
+    }
     }
     pub struct Recetario {
         recetas: HashMap<String, Receta>,
@@ -345,6 +437,9 @@ pub mod servicio {
         }
 
         pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
+
+            
+            
             if *nombre != receta.nombre().clone() {
                 return Err(AppError::DatoInvalido(format!(
                     "la receta: {} no existe. te refieres a: {}?",
@@ -370,7 +465,9 @@ pub mod servicio {
             match probables {
                 Some(nombre) => println!("O quisiste decir: {}?", nombre),
                 None => println!("No se encontraron coincidencias. "),
-            };
+            }
         }
     }
+
+    
 }
