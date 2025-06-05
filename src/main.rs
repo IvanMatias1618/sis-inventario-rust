@@ -4,6 +4,7 @@
 fn main() {
     //Es buena practica dejar esta weada aquí para saber que todo esta al cien 7u7
     use crate::negocio;
+    use crate::servicio;
     use std::io;
 
     let escuchar_teclado = io::stdin();
@@ -15,25 +16,9 @@ fn main() {
         .expect("Error al leer el teclado");
     let mut insumo = loops::crear_insumo(&nombre);
     println!("insumo creado.\n Creando Almacen");
-    let mut almacen = negocio::Almacen::nuevo();
+    let mut almacen = servicio::Almacen::nuevo();
     println!("Almacen creado.\nAñadiendo el insumo al almacen");
-    almacen.añadir(nombre.clone(), insumo);
-    println!("Se creara una receta con el ingrediente {}", &nombre);
-    println!("cuantos gramos se usaran?");
-    let cantida = auxiliares::no_es_cero();
-    let cantidad: f64 = cantida as f64;
-    let mut ingredientes = Vec::new();
-    let tupla = (nombre.clone(), cantidad);
-    ingredientes.push(tupla);
-    let mut receta: String = String::new();
-    println!("Cual sera el nombre de la receta?");
-    escuchar_teclado
-        .read_line(&mut receta)
-        .expect("Error al leer el teclado");
-    match negocio::Receta::nuevo(nombre, ingredientes, &almacen) {
-        Ok(receta) => println!("El costo de la receta es: {}", receta.costo()),
-        Err(e) => println!("hubo un error al crear la receta: {}", e),
-    };
+    almacen.añadir(&nombre, insumo);
 }
 
 pub mod loops {
@@ -124,8 +109,9 @@ pub mod negocio {
     //antes que crear la instancia. o devolver AppError para casi todo :u
     //
     use crate::auxiliares::{AppError, AppResult};
-    use chrono::{DateTime, TimeZone}; //Esto de acá es para la fecha.
-    use std::collections::HashMap;
+    use chrono::{DateTime, TimeZone};
+    use rusqlite::ffi::SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER;
+    //Esto de acá es para la fecha.
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
     //Estructuras de datos que se usaran en Virtualizacion.
     pub struct Insumo {
@@ -211,39 +197,8 @@ pub mod negocio {
             let gramo_precio = self.obtener_costo_por_gramo();
             gramo_precio * (cantidad)
         }
-    }
-
-    //se necesita un lifetime aqui?
-    pub struct Almacen {
-        bodega: HashMap<String, Insumo>,
-    }
-
-    impl Almacen {
-        pub fn nuevo() -> Self {
-            Almacen {
-                bodega: HashMap::new(),
-            }
-        }
-        pub fn añadir(&mut self, clave: String, insumo: Insumo) {
-            self.bodega.insert(clave, insumo);
-        }
-        pub fn buscar_clave(&self, busqueda: &str) {
-            use strsim::levenshtein;
-            let probables: Vec<_> = self
-                .bodega
-                .keys()
-                .filter(|nombre| nombre.contains(busqueda))
-                .collect();
-            println!("Coincidencias: {:?}", probables);
-
-            let probables = self
-                .bodega
-                .keys()
-                .min_by_key(|nombre| levenshtein(nombre, busqueda));
-            match probables {
-                Some(nombre) => println!("O quisiste decir: {}?", nombre),
-                None => println!("No se encontraron coincidencias. "),
-            };
+        pub fn nombre(&self) -> &String {
+            &self.nombre
         }
     }
     pub struct Receta {
@@ -253,59 +208,41 @@ pub mod negocio {
         costo: f64,
     }
 
-    impl<'a> Receta {
-        pub fn nuevo(
-            nombre: String,
-            ingredientes: Vec<(String, f64)>,
-            almacen: &'a Almacen,
-        ) -> AppResult<Receta> {
+    impl Receta {
+        pub fn nuevo(nombre: String, insumos: Vec<(&Insumo, f64)>) -> AppResult<Receta> {
             if nombre.is_empty() {
                 return Err(AppError::DatoInvalido(
                     "el nombre no deberia estar vacio".to_string(),
                 ));
             };
-            if !ingredientes.is_empty() {
-                for (ingrediente, _) in &ingredientes {
-                    if almacen.bodega.contains_key(ingrediente) {
-                        continue;
-                    } else {
-                        return Err(AppError::DatoInvalido(format!(
-                            "el ingrediente: '{}'",
-                            ingrediente
-                        )));
-                    }
-                }
-            } else {
+            if insumos.is_empty() {
                 return Err(AppError::DatoInvalido(
-                    "la lista de ingredientes esta vacia".to_string(),
+                    "el ingrediente: '{}' no existe".to_string(),
                 ));
-            };
+            }
+            let costo = Receta::calcular_costo(&insumos);
 
+            let mut ingredientes: Vec<(String, f64)> = Vec::new();
+            for (insumo, cantidad) in &insumos {
+                let conjunto = (insumo.nombre().clone(), *cantidad);
+                ingredientes.push(conjunto);
+            }
             let mut receta = Receta {
                 id: Uuid::new_v4(),
                 nombre,
                 ingredientes,
-                costo: 0.0,
+                costo,
             };
-            receta.calcular_costo(almacen)?;
             Ok(receta)
         }
 
-        fn calcular_costo(&mut self, almacen: &Almacen) -> AppResult<()> {
+        fn calcular_costo(ingredientes: &Vec<(&Insumo, f64)>) -> f64 {
             let mut costo: f64 = 0.0;
-            for (nombre, cantidad) in &self.ingredientes {
-                if let Some(insumo) = almacen.bodega.get(nombre) {
-                    costo += insumo.costo_por_gramos(*cantidad);
-                } else {
-                    return Err(AppError::ErrorPersonal(format!(
-                        "Advertencia: El ingrediente: {}, no existe en el almacen.",
-                        nombre
-                    )));
-                }
+            for (insumo, cantidad) in ingredientes {
+                costo += insumo.costo_por_gramos(*cantidad);
                 //espera, como llamamos al almacen :u
             }
-            self.costo = costo;
-            Ok(())
+            costo
         }
 
         pub fn costo(&self) -> f64 {
@@ -313,52 +250,6 @@ pub mod negocio {
         }
         pub fn nombre(&self) -> &String {
             &self.nombre
-        }
-    }
-    pub struct Recetario {
-        recetas: HashMap<String, Receta>,
-    }
-
-    impl Recetario {
-        pub fn nuevo() -> Self {
-            Recetario {
-                recetas: HashMap::new(),
-            }
-        }
-
-        pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
-            if *nombre != receta.nombre {
-                return Err(AppError::DatoInvalido(format!(
-                    "la receta: {} no existe. te refieres a: {}?",
-                    nombre,
-                    receta.nombre()
-                )));
-            }
-            self.recetas.insert(nombre.clone(), receta);
-            Ok(())
-        }
-
-        /*
-                 QUIZA USEMOS UN TRAIT DE BUSQUEDA JEJE
-        */
-
-        pub fn buscar_clave(&self, busqueda: &str) {
-            use strsim::levenshtein;
-            let probables: Vec<_> = self
-                .recetas
-                .keys()
-                .filter(|nombre| nombre.contains(busqueda))
-                .collect();
-            println!("Coincidencias: {:?}", probables);
-
-            let probables = self
-                .recetas
-                .keys()
-                .min_by_key(|nombre| levenshtein(nombre, busqueda));
-            match probables {
-                Some(nombre) => println!("O quisiste decir: {}?", nombre),
-                None => println!("No se encontraron coincidencias. "),
-            };
         }
     }
 
@@ -403,4 +294,83 @@ pub mod negocio {
     pub struct Reporte {
         operador: &'static Uuid,
     } //
+}
+
+pub mod servicio {
+    use crate::auxiliares::{AppError, AppResult};
+    use crate::negocio::{Insumo, Receta};
+    use std::collections::HashMap;
+
+    pub struct Almacen {
+        bodega: HashMap<String, Insumo>,
+    }
+
+    impl Almacen {
+        pub fn nuevo() -> Self {
+            Almacen {
+                bodega: HashMap::new(),
+            }
+        }
+        pub fn añadir(&mut self, clave: &String, insumo: Insumo) {
+            self.bodega.insert(clave.clone(), insumo);
+        }
+        pub fn buscar_clave(&self, busqueda: &str) {
+            use strsim::levenshtein;
+            let probables: Vec<_> = self
+                .bodega
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            println!("Coincidencias: {:?}", probables);
+
+            let probables = self
+                .bodega
+                .keys()
+                .min_by_key(|nombre| levenshtein(nombre, busqueda));
+            match probables {
+                Some(nombre) => println!("O quisiste decir: {}?", nombre),
+                None => println!("No se encontraron coincidencias. "),
+            };
+        }
+    }
+    pub struct Recetario {
+        recetas: HashMap<String, Receta>,
+    }
+
+    impl Recetario {
+        pub fn nuevo() -> Self {
+            Recetario {
+                recetas: HashMap::new(),
+            }
+        }
+
+        pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
+            if *nombre != receta.nombre().clone() {
+                return Err(AppError::DatoInvalido(format!(
+                    "la receta: {} no existe. te refieres a: {}?",
+                    nombre,
+                    receta.nombre()
+                )));
+            }
+            self.recetas.insert(nombre.clone(), receta);
+            Ok(())
+        }
+        pub fn buscar_clave(&self, busqueda: &str) {
+            use strsim::levenshtein;
+            let probables: Vec<_> = self
+                .recetas
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            println!("Coincidencias: {:?}", probables);
+            let probables = self
+                .recetas
+                .keys()
+                .min_by_key(|nombre| levenshtein(nombre, busqueda));
+            match probables {
+                Some(nombre) => println!("O quisiste decir: {}?", nombre),
+                None => println!("No se encontraron coincidencias. "),
+            };
+        }
+    }
 }
