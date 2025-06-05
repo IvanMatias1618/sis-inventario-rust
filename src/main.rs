@@ -3,65 +3,83 @@
 
 fn main() {
     //Es buena practica dejar esta weada aquí para saber que todo esta al cien 7u7
+    loops::principal();
+}
+
+pub mod loops {
+    //1
+
+    use crate::auxiliares::{self, solicitar_ingredientes};
     use crate::negocio;
     use crate::servicio;
     use std::io;
 
-    let escuchar_teclado = io::stdin();
-
-    let mut nombre: String = String::new();
-    println!("Cual sera el nombre del insumo?");
-    escuchar_teclado
-        .read_line(&mut nombre)
-        .expect("Error al leer el teclado");
-    let mut insumo = loops::crear_insumo(&nombre);
-    println!("insumo creado.\n Creando Almacen");
-    let mut almacen = servicio::Almacen::nuevo();
-    println!("Almacen creado.\nAñadiendo el insumo al almacen");
-    almacen.añadir(&nombre, insumo);
-}
-
-pub mod loops {
-
-    use crate::auxiliares;
-    use crate::auxiliares::solicitar_ingredientes;
-    use crate::negocio;
-    use std::io;
-
     pub fn principal() {
-        use crate::servicio;
-        use crate::negocio;
+        //2
 
-        let mut almacen = servicio::almacen::nuevo();
-        
+        let mut almacen = servicio::Almacen::nuevo();
+        let mut recetario = servicio::Recetario::nuevo();
+
         loop {
+            //3
             println!("Hola! Bienvenid@ a tu inventario :3");
-            println!("que queres hacer pequeñ@ amig@?  \n
+            println!(
+                "que queres hacer pequeñ@ amig@?  \n
                 1) Salir del programa. \n
                 2) Crear un insumo.  \n
-                3) Crear una receta. ");
-            let numero: u32 = no_es_cero();
-            match numero{
-                1 => return (),
+                3) Crear una receta. "
+            );
+            let numero: u32 = auxiliares::no_es_cero();
+            match numero {
+                //4
+                1 => break,
                 2 => {
-                    let nombre:String = solicitar_texto();
+                    //5
+                    let nombre: String = auxiliares::solicitar_texto();
                     let mut insumo = crear_insumo(&nombre);
-                    almacen.añadir(&nombre, insumo);                     
-                }
+                    almacen.añadir(&nombre, insumo);
+                } //5
                 3 => {
+                    //5
                     let mut nombre: String = String::new();
-▍                   println!("Que nombre quieres para tu receta?=");
-▍                   nombre = solicitar_texto();
-                    ingredientes: vec<(String, f64)> = solicitar_ingredientes(&almacen);
-                    let receta: negocio::Receta = nogocio::Receta::nuevo(nombre, ingredientes);            
-                } 
+                    println!("Que nombre quieres para tu receta?=");
+                    nombre = auxiliares::solicitar_texto();
+                    let mut ingredientes: Vec<(String, f64)> =
+                        auxiliares::solicitar_ingredientes(&almacen);
+                    let mut insumos: Vec<(&negocio::Insumo, f64)> = Vec::new();
+                    for (ingrediente, cantidad) in &ingredientes {
+                        match almacen.clave_insumo(ingrediente.as_str()) {
+                            Ok(insumo) => {
+                                let conjunto = (insumo, *cantidad);
+                                insumos.push(conjunto);
+                            }
+                            Err(e) => {
+                                println!("Ocurrio un error: {}", e);
+                                continue;
+                            }
+                        }
+                    }
+
+                    match negocio::Receta::nuevo(nombre.clone(), insumos) {
+                        Ok(receta) => {
+                            recetario.añadir(&nombre, receta);
+                            println!("la receta {} se ha agregado al recetario", nombre);
+                            continue;
+                        }
+                        Err(e) => {
+                            println!("hubo un error al crear la receta {}, Error: {}", nombre, e);
+                            continue;
+                        }
+                    }
+                } //5
                 _ => continue,
-            }
-            
-        }
-    }
+            } //4
+        } //3
+    } //2
     pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
+        //2
         loop {
+            //3
             println!("Cual es la cantidad en gramos del insumo");
             let cantidad: u32 = auxiliares::no_es_cero();
             println!("Cual es la cantidad minima de gramos");
@@ -70,65 +88,101 @@ pub mod loops {
             let precio: u32 = auxiliares::no_es_cero();
             println!("creando insumo..");
             match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
+                //4
                 Ok(insumo) => return insumo,
                 Err(e) => {
+                    //5
                     println!("ocurrio un error al crear el insumo: {}", e);
                     continue;
                 }
-            };
-        }
-    }
-    //Trabajar en un loop de comandos, nos servira para la primera interfaz de usuario.
-}
+            } //4
+        } //3
+    } //2
+} //1
+
 pub mod auxiliares {
-    use std::{intrinsics::ptr_offset_from_unsigned, io};
+    //1
+    use crate::negocio;
     use crate::servicio;
+    use std::io;
 
     pub fn solicitar_ingredientes(almacen: &servicio::Almacen) -> Vec<(String, f64)> {
-        let mut ingredientes:Vec<(String, f64)> = Vec::new();
+        //2
+        let mut ingredientes: Vec<(String, f64)> = Vec::new();
         loop {
+            //3
             println!("que ingrediente quieres usar para tu receta?");
             let mut ingrediente: String = solicitar_texto();
             almacen.buscar_clave(&ingrediente.as_str());
             println!("ingresa nuevamente el nombre del insumo:");
-            println!("Quieres escribir nuevamente el nombre de tu insumo? \n
+            match almacen.clave_insumo(&ingrediente.as_str()) {
+                //4
+                Ok(_) => (),
+                Err(e) => {
+                    println!("ocurrio un error al buscar el insumo: {}", e);
+                    continue;
+                }
+            } //4
+            println!(
+                "Quieres escribir nuevamente el nombre de tu insumo? \n
                 1) si \n
-                2) no, seguir con este nombre");
-            //Aqui obtenemos el &Insumo del almacen y lo pasamos al vec de ingredientes para pasarlo a funcion nuevo() de receta
+                 2) no, seguir con este nombre"
+            );
             let mut res = no_es_cero();
             match res {
+                //4
                 1 => continue,
                 2 => (),
                 3 => continue,
-            }
+                _ => continue,
+            } //4
+            match almacen.clave_insumo(&ingrediente.as_str()) {
+                //4
+                Ok(_) => (),
+                Err(e) => {
+                    println!(
+                        "ocurrio un error al buscar el insumo {}: {}",
+                        ingrediente, e
+                    );
+                    continue;
+                }
+            } //4
             println!("cuantos gramos queres usar?");
             res = no_es_cero();
             let res: f64 = res as f64;
-            let conjunto = (ingrediente,res);
+            let conjunto = (ingrediente, res);
             ingredientes.push(conjunto);
-            println!("Quieres añadir mas ingredientes a esta receta?\n
+            println!(
+                "Quieres añadir mas ingredientes a esta receta?\n
                 1) si. \n
-                2) no, es todo.");
+                2) no, es todo."
+            );
             let res = no_es_cero();
             match res {
+                //4
                 1 => continue,
-                2 => break,
+                2 => return ingredientes,
                 _ => continue,
-            }
-        }
-    }
-    
+            } //4
+        } //3
+    } //2
 
     pub fn solicitar_texto() -> String {
+        //2
         loop {
-           let mut buffer = String::new();
-           io::stdin().read_line(&mut buffer).expect("Error al leer el teclado.");
-           if buffer.trim().is_empty() {
-               println!("el texto no deberia estar vacio, preuba nuevamente:");
-               continue;
-           }
-           return buffer;
-    }
+            //3
+            let mut buffer = String::new();
+            io::stdin()
+                .read_line(&mut buffer)
+                .expect("Error al leer el teclado.");
+            if buffer.trim().is_empty() {
+                //4
+                println!("el texto no deberia estar vacio, preuba nuevamente:");
+                continue;
+            } //4
+            return buffer;
+        } //3
+    } //2
     pub fn no_es_cero() -> u32 {
         loop {
             let mut buffer = String::new(); // Create a new, empty string for each iteration
@@ -371,7 +425,7 @@ pub mod negocio {
 }
 
 pub mod servicio {
-    use crate::auxiliares::{AppError, AppResult, solicitar_texto, no_es_cero};
+    use crate::auxiliares::{AppError, AppResult, no_es_cero, solicitar_texto};
     use crate::negocio::{Insumo, Receta};
     use std::collections::HashMap;
 
@@ -406,24 +460,17 @@ pub mod servicio {
                 None => println!("No se encontraron coincidencias. "),
             };
         }
-        pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
-           loop {
-               println!("Cual es la cantidad en gramos del insumo");
-               let cantidad: u32 = auxiliares::no_es_cero();
-               println!("Cual es la cantidad minima de gramos");
-               let cantidad_minima: u32 = auxiliares::no_es_cero();
-            println!("Cual es el precio del insumo");
-            let precio: u32 = auxiliares::no_es_cero();
-            println!("creando insumo..");
-               match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
-                Ok(insumo) => return insumo,
-                   Err(e) => {
-                    println!("ocurrio un error al crear el insumo: {}", e);
-                    continue;
+        pub fn clave_insumo(&self, nombre: &str) -> AppResult<&Insumo> {
+            match self.bodega.get(nombre) {
+                Some(insumo) => return Ok(&insumo),
+                None => {
+                    return Err(AppError::DatoInvalido(format!(
+                        "no se encontro el insumo {}",
+                        nombre
+                    )));
                 }
-            };
+            }
         }
-    }
     }
     pub struct Recetario {
         recetas: HashMap<String, Receta>,
@@ -437,9 +484,6 @@ pub mod servicio {
         }
 
         pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
-
-            
-            
             if *nombre != receta.nombre().clone() {
                 return Err(AppError::DatoInvalido(format!(
                     "la receta: {} no existe. te refieres a: {}?",
@@ -468,6 +512,4 @@ pub mod servicio {
             }
         }
     }
-
-    
 }
