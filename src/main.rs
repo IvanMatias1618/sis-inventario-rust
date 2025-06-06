@@ -514,17 +514,19 @@ pub mod servicio {
 }
 
 pub mod repositorio {
+    use crate::auxiliares::{AppError, AppResult};
     use crate::negocio::{self, Insumo};
     use std::collections::HashMap;
+    use strsim::levenshtein;
 
     pub trait Bodega {
         fn nuevo() -> Self;
         fn cargar(&mut self);
-        fn añadir(&self, nombre: &String, insumo: &mut negocio::Insumo);
-        fn eliminar(&mut self, nombre: &String);
-        fn buscar(&self, busqueda: &String) -> Vec<String>;
-        fn obtener(&self, insumo: String) -> &negocio::Insumo;
-        fn mostrar_todos(&self) -> Vec<(String, u32)>; //realmente sera un insumo pero hay que ver como)> ;
+        fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
+        fn eliminar(&mut self, nombre: &str);
+        fn buscar(&self, busqueda: &str) -> Vec<&String>;
+        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Insumo>;
+        fn mostrar_todos(&self) -> Vec<(&String, &Insumo)>; //realmente sera un insumo pero hay que ver como)> ;
     }
 
     pub struct Almacen {
@@ -538,57 +540,106 @@ pub mod repositorio {
             }
         }
         fn cargar(&mut self) {
-            let mut insumo: negocio::Insumo = match Insumo::nuevo("leche".to_string(), 120, 100, 30)
-            {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            self.añadir(&"leche".to_string(), *insumo);
-            let insumo = match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            let mut insumo: negocio::Insumo =
-                match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
-                    Ok(insumo) => insumo,
-                    Err(e) => (),
-                };
-            self.añadir(&"chocolate".to_string(), *insumo);
-            let insumo = match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            self.añadir(&"cocoa".to_string(), *insumo);
-            let mut insumo: negocio::Insumo = match Insumo::nuevo("leche".to_string(), 120, 100, 30)
-            {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            self.añadir(&"leche".to_string(), *insumo);
-            let insumo = match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            let mut insumo: negocio::Insumo =
-                match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
-                    Ok(insumo) => insumo,
-                    Err(e) => (),
-                };
-            self.añadir(&"chocolate".to_string(), *insumo);
-            let insumo = match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
-                Ok(insumo) => insumo,
-                Err(e) => (),
-            };
-            self.añadir(&"cocoa".to_string(), *insumo);
+            match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"leche".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+            match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"cafe".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+            match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"chocolate".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+            match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"cocoa".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+
+            match Insumo::nuevo("caramelo".to_string(), 1000, 150, 13) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"caramelo".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+            match Insumo::nuevo("vainilla".to_string(), 1000, 123, 40) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"vainilla", nuevo)
+                }
+                Err(_) => (),
+            }
+
+            match Insumo::nuevo("rompope".to_string(), 120, 100, 30) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"rompope".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
+            match Insumo::nuevo("matcha".to_string(), 1000, 123, 40) {
+                Ok(insumo) => {
+                    let mut nuevo = insumo;
+                    self.añadir(&"matcha".to_string(), nuevo)
+                }
+                Err(_) => (),
+            }
         }
-        fn añadir(&self, nombre: &String, insumo: negocio::Insumo) {
-            self.bodega.insert(nombre.clone(), insumo);
+        fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo) {
+            self.bodega.insert(nombre.to_string(), insumo);
         }
-        fn eliminar(&mut self, nombre: &String) {
+        fn eliminar(&mut self, nombre: &str) {
             self.bodega.remove(nombre);
         }
-        fn buscar(&self, busqueda: &String) -> Vec<String> {}
-        fn obtener(&self, insumo: String) -> &Insumo {}
-        fn mostrar_todos(&self) -> Vec<(String, u32)> {}
+        fn buscar(&self, busqueda: &str) -> Vec<&String> {
+            let mut resultados: Vec<&String> = Vec::new();
+            resultados = self
+                .bodega
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            let probables = self
+                .bodega
+                .keys()
+                .min_by_key(|insumo| levenshtein(insumo, busqueda));
+            match probables {
+                Some(opcion) => {
+                    resultados.push(opcion);
+                    return resultados;
+                }
+                None => return resultados,
+            }
+        }
+        fn obtener(&mut self, busqueda: &str) -> AppResult<&Insumo> {
+            match self.bodega.get(busqueda) {
+                Some(insumo) => Ok(&insumo),
+                None => Err(AppError::DatoInvalido(format!(
+                    "el insumo: {}, no existe",
+                    busqueda
+                ))),
+            }
+        }
+        fn mostrar_todos(&self) -> Vec<(&String, &Insumo)> {
+            let mut resultados: Vec<(&String, &Insumo)> = Vec::new();
+            for (clave, insumo) in &self.bodega {
+                let conjunto = (clave, insumo);
+                resultados.push(conjunto);
+            }
+            return resultados;
+        }
     }
 }
