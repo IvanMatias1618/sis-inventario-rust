@@ -9,7 +9,7 @@ fn main() {
 pub mod loops {
     //1
 
-    use crate::auxiliares::{self, solicitar_ingredientes};
+    use crate::auxiliares;
     use crate::negocio;
     use crate::servicio;
     use std::io;
@@ -35,6 +35,7 @@ pub mod loops {
                 1 => break,
                 2 => {
                     //5
+                    println!("Que nombre quieres para tu Insumo?");
                     let nombre: String = auxiliares::solicitar_texto();
                     let mut insumo = crear_insumo(&nombre);
                     almacen.añadir(&nombre, insumo);
@@ -44,8 +45,7 @@ pub mod loops {
                     let mut nombre: String = String::new();
                     println!("Que nombre quieres para tu receta?=");
                     nombre = auxiliares::solicitar_texto();
-                    let mut ingredientes: Vec<(String, f64)> =
-                        auxiliares::solicitar_ingredientes(&almacen);
+                    let mut ingredientes: Vec<(String, f64)> = solicitar_ingredientes(&almacen);
                     let mut insumos: Vec<(&negocio::Insumo, f64)> = Vec::new();
                     for (ingrediente, cantidad) in &ingredientes {
                         match almacen.clave_insumo(ingrediente.as_str()) {
@@ -98,21 +98,13 @@ pub mod loops {
             } //4
         } //3
     } //2
-} //1
-
-pub mod auxiliares {
-    //1
-    use crate::negocio;
-    use crate::servicio;
-    use std::io;
-
     pub fn solicitar_ingredientes(almacen: &servicio::Almacen) -> Vec<(String, f64)> {
         //2
         let mut ingredientes: Vec<(String, f64)> = Vec::new();
         loop {
             //3
             println!("que ingrediente quieres usar para tu receta?");
-            let mut ingrediente: String = solicitar_texto();
+            let mut ingrediente: String = auxiliares::solicitar_texto();
             almacen.buscar_clave(&ingrediente.as_str());
             println!("ingresa nuevamente el nombre del insumo:");
             match almacen.clave_insumo(&ingrediente.as_str()) {
@@ -128,14 +120,14 @@ pub mod auxiliares {
                 1) si \n
                  2) no, seguir con este nombre"
             );
-            let mut res = no_es_cero();
+            let mut res = auxiliares::no_es_cero();
             match res {
                 //4
                 1 => continue,
                 2 => (),
                 3 => continue,
                 _ => continue,
-            } //4
+            } //4 
             match almacen.clave_insumo(&ingrediente.as_str()) {
                 //4
                 Ok(_) => (),
@@ -148,7 +140,7 @@ pub mod auxiliares {
                 }
             } //4
             println!("cuantos gramos queres usar?");
-            res = no_es_cero();
+            res = auxiliares::no_es_cero();
             let res: f64 = res as f64;
             let conjunto = (ingrediente, res);
             ingredientes.push(conjunto);
@@ -157,7 +149,7 @@ pub mod auxiliares {
                 1) si. \n
                 2) no, es todo."
             );
-            let res = no_es_cero();
+            let res = auxiliares::no_es_cero();
             match res {
                 //4
                 1 => continue,
@@ -166,6 +158,13 @@ pub mod auxiliares {
             } //4
         } //3
     } //2
+} //1
+
+pub mod auxiliares {
+    //1
+    use crate::negocio;
+    use crate::servicio;
+    use std::io;
 
     pub fn solicitar_texto() -> String {
         //2
@@ -314,7 +313,7 @@ pub mod negocio {
         }
 
         pub fn alerta_cantidad_minima(&self) -> bool {
-            self.cantidad <= self.cantidad
+            self.cantidad <= self.cantidad_minima
         }
         pub fn obtener_id(&self) -> &Uuid {
             &self.id
@@ -511,5 +510,85 @@ pub mod servicio {
                 None => println!("No se encontraron coincidencias. "),
             }
         }
+    }
+}
+
+pub mod repositorio {
+    use crate::negocio::{self, Insumo};
+    use std::collections::HashMap;
+
+    pub trait Bodega {
+        fn nuevo() -> Self;
+        fn cargar(&mut self);
+        fn añadir(&self, nombre: &String, insumo: &mut negocio::Insumo);
+        fn eliminar(&mut self, nombre: &String);
+        fn buscar(&self, busqueda: &String) -> Vec<String>;
+        fn obtener(&self, insumo: String) -> &negocio::Insumo;
+        fn mostrar_todos(&self) -> Vec<(String, u32)>; //realmente sera un insumo pero hay que ver como)> ;
+    }
+
+    pub struct Almacen {
+        bodega: HashMap<String, negocio::Insumo>,
+    }
+
+    impl Bodega for Almacen {
+        fn nuevo() -> Self {
+            Almacen {
+                bodega: HashMap::new(),
+            }
+        }
+        fn cargar(&mut self) {
+            let mut insumo: negocio::Insumo = match Insumo::nuevo("leche".to_string(), 120, 100, 30)
+            {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            self.añadir(&"leche".to_string(), *insumo);
+            let insumo = match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            let mut insumo: negocio::Insumo =
+                match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
+                    Ok(insumo) => insumo,
+                    Err(e) => (),
+                };
+            self.añadir(&"chocolate".to_string(), *insumo);
+            let insumo = match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            self.añadir(&"cocoa".to_string(), *insumo);
+            let mut insumo: negocio::Insumo = match Insumo::nuevo("leche".to_string(), 120, 100, 30)
+            {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            self.añadir(&"leche".to_string(), *insumo);
+            let insumo = match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            let mut insumo: negocio::Insumo =
+                match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
+                    Ok(insumo) => insumo,
+                    Err(e) => (),
+                };
+            self.añadir(&"chocolate".to_string(), *insumo);
+            let insumo = match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
+                Ok(insumo) => insumo,
+                Err(e) => (),
+            };
+            self.añadir(&"cocoa".to_string(), *insumo);
+        }
+        fn añadir(&self, nombre: &String, insumo: negocio::Insumo) {
+            self.bodega.insert(nombre.clone(), insumo);
+        }
+        fn eliminar(&mut self, nombre: &String) {
+            self.bodega.remove(nombre);
+        }
+        fn buscar(&self, busqueda: &String) -> Vec<String> {}
+        fn obtener(&self, insumo: String) -> &Insumo {}
+        fn mostrar_todos(&self) -> Vec<(String, u32)> {}
     }
 }
