@@ -525,7 +525,7 @@ pub mod repositorio {
         fn eliminar(&mut self, nombre: &str);
         fn buscar(&self, busqueda: &str) -> Vec<&String>;
         fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Insumo>;
-        fn mostrar_todos(&self) -> Vec<(&String, &Insumo)>; //realmente sera un insumo pero hay que ver como)> ;
+        fn mostrar_todos(&self) -> Vec<String>; //realmente sera un insumo pero hay que ver como)> ;
     }
 
     pub struct AlmacenEnMemoria {
@@ -634,11 +634,10 @@ pub mod repositorio {
                 ))),
             }
         }
-        fn mostrar_todos(&self) -> Vec<(&String, &Insumo)> {
-            let mut resultados: Vec<(&String, &Insumo)> = Vec::new();
-            for (clave, insumo) in &self.bodega {
-                let conjunto = (clave, insumo);
-                resultados.push(conjunto);
+        fn mostrar_todos(&self) -> Vec<String> {
+            let mut resultados: Vec<String> = Vec::new();
+            for (clave, _) in &self.bodega {
+                resultados.push(clave.clone());
             }
             return resultados;
         }
@@ -711,10 +710,96 @@ pub mod repositorio {
 }
 pub mod servicios {
 
+    use crate::auxiliares::{AppError, AppResult};
     use crate::negocio;
-    use crate::repositorio;
+    use crate::repositorio::Bodega;
+    use rusqlite::ffi::sqlite3changeset_concat_strm;
+    use strsim::levenshtein;
 
     pub struct ServicioDeAlmacen {
-        repositorio: String,
-    } //repositorio es donde va el box dyn o  sepa k
+        repositorio: Box<dyn Bodega>,
+    }
+
+    impl ServicioDeAlmacen {
+        fn nuevo(
+            &mut self,
+            nombre: String,
+            cantidad: u32,
+            cantidad_minima: u32,
+            precio: u32,
+        ) -> AppResult<()> {
+            if nombre.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "el nombre no puede estar vacio".to_string(),
+                ));
+            }
+            if cantidad == 0 {
+                return Err(AppError::DatoInvalido(
+                    "la cantidad no puede estar en cero".to_string(),
+                ));
+            }
+            if precio == 0 {
+                return Err(AppError::DatoInvalido(
+                    "el costo no puede ser cero.".to_string(),
+                ));
+            }
+            if cantidad_minima == 0 || cantidad_minima > cantidad {
+                return Err(AppError::DatoInvalido(
+                    "la cantidad minima no deberia ser ni cero, ni mayor a la cantidad actual."
+                        .to_string(),
+                ));
+            }
+            match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
+                Ok(insumo) => {
+                    let mut nuevo_insumo = insumo;
+                    self.repositorio.añadir(nombre.as_str(), nuevo_insumo);
+                    Ok(())
+                }
+                Err(e) => Err(AppError::ErrorPersonal(format!(
+                    "ocurrio un problema al intentar crear el insumo: {}",
+                    e
+                ))),
+            }
+        }
+        fn buscar(&self, busqueda: &str) -> Vec<String> {
+            let lista = self.repositorio.mostrar_todos();
+            let mut resultados = Vec::new();
+            resultados = lista
+                .clone()
+                .into_iter()
+                .filter(|nombre| nombre.contains(busqueda))
+                .collect();
+            let probables = lista
+                .into_iter()
+                .min_by_key(|insumo| levenshtein(insumo, busqueda));
+            match probables {
+                Some(opcion) => {
+                    resultados.push(opcion.clone());
+                    return resultados;
+                }
+                None => return resultados,
+            }
+        }
+
+        fn existe(&self, busqueda: &String) -> bool {
+            let lista = self.repositorio.mostrar_todos();
+            if lista.contains(busqueda) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        fn eliminar(&mut self, insumo: &str) -> AppResult<()> {
+            if self.existe(&insumo.to_string()) {
+                self.repositorio.eliminar(insumo);
+                return Ok(());
+            } else {
+                return Err(AppError::DatoInvalido(format!(
+                    "el insumo: {}, no existe.",
+                    insumo
+                )));
+            }
+        }
+    }
 }
