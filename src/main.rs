@@ -227,9 +227,6 @@ pub mod auxiliares {
 pub mod negocio {
     //Esta capa del programa se encargara de la virtualizacion de entidades en memoria y
     //su gestion bajo las reglas logicas del negocio.
-
-    use core::f64;
-
     //IMPLEMENTAR VALIDACIONES :3
     //
     //podriamos pensar en un validador o algo por el estilo, que pueda manejar datos genericos y
@@ -242,12 +239,14 @@ pub mod negocio {
     //
     use crate::auxiliares::{AppError, AppResult};
     use chrono::{DateTime, TimeZone};
+    use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
     //Estructuras de datos que se usaran en Virtualizacion.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Insumo {
         //Simulacion de un insumo
-        id: Uuid,
+        id: String,
         nombre: String,
         cantidad: u32,
         precio: u32,
@@ -291,7 +290,7 @@ pub mod negocio {
             };
 
             Ok(Insumo {
-                id: Uuid::new_v4(),
+                id: Uuid::new_v4().to_string(),
                 nombre,
                 cantidad,
                 precio,
@@ -315,7 +314,7 @@ pub mod negocio {
         pub fn alerta_cantidad_minima(&self) -> bool {
             self.cantidad <= self.cantidad_minima
         }
-        pub fn obtener_id(&self) -> &Uuid {
+        pub fn obtener_id(&self) -> &String {
             &self.id
         }
         pub fn obtener_cantidad(&self) -> u32 {
@@ -332,8 +331,9 @@ pub mod negocio {
             &self.nombre
         }
     }
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Receta {
-        id: Uuid,
+        id: String,
         nombre: String,
         ingredientes: Vec<(String, f64)>,
         costo: f64,
@@ -359,7 +359,7 @@ pub mod negocio {
                 ingredientes.push(conjunto);
             }
             let mut receta = Receta {
-                id: Uuid::new_v4(),
+                id: Uuid::new_v4().to_string(),
                 nombre,
                 ingredientes,
                 costo,
@@ -520,7 +520,6 @@ pub mod repositorio {
     use strsim::levenshtein;
 
     pub trait Bodega {
-        fn nuevo() -> Self;
         fn cargar(&mut self);
         fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
         fn eliminar(&mut self, nombre: &str);
@@ -529,16 +528,18 @@ pub mod repositorio {
         fn mostrar_todos(&self) -> Vec<(&String, &Insumo)>; //realmente sera un insumo pero hay que ver como)> ;
     }
 
-    pub struct Almacen {
+    pub struct AlmacenEnMemoria {
         bodega: HashMap<String, negocio::Insumo>,
     }
 
-    impl Bodega for Almacen {
+    impl AlmacenEnMemoria {
         fn nuevo() -> Self {
-            Almacen {
+            AlmacenEnMemoria {
                 bodega: HashMap::new(),
             }
         }
+    }
+    impl Bodega for AlmacenEnMemoria {
         fn cargar(&mut self) {
             match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
                 Ok(insumo) => {
@@ -642,4 +643,78 @@ pub mod repositorio {
             return resultados;
         }
     }
+
+    pub trait RecetasEnMemoria {
+        fn añadir(&mut self, receta: negocio::Receta);
+        fn eliminar(&mut self, nombre: &str);
+        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta>;
+        fn buscar(&self, busqueda: &str) -> Vec<String>;
+        fn listar(&self) -> Vec<String>;
+    }
+
+    pub struct RecetarioEnMemoria {
+        libro: HashMap<String, negocio::Receta>,
+    }
+
+    impl RecetarioEnMemoria {
+        fn nuevo() -> Self {
+            RecetarioEnMemoria {
+                libro: HashMap::new(),
+            }
+        }
+    }
+
+    impl RecetasEnMemoria for RecetarioEnMemoria {
+        fn añadir(&mut self, receta: negocio::Receta) {
+            self.libro.insert(receta.nombre().clone(), receta);
+        }
+        fn eliminar(&mut self, nombre: &str) {
+            self.libro.remove(nombre);
+        }
+        fn listar(&self) -> Vec<String> {
+            let mut resultado: Vec<String> = Vec::new();
+            for (nombre, _) in &self.libro {
+                resultado.push(nombre.clone());
+            }
+            resultado
+        }
+        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
+            match self.libro.get(busqueda) {
+                Some(receta) => Ok(&receta),
+                None => Err(AppError::DatoInvalido(format!(
+                    "no se encontro la receta: {}",
+                    busqueda
+                ))),
+            }
+        }
+        fn buscar(&self, busqueda: &str) -> Vec<String> {
+            let mut resultados = Vec::new();
+            resultados = self
+                .libro
+                .keys()
+                .filter(|nombre| nombre.contains(busqueda))
+                .cloned()
+                .collect();
+            let probables = self
+                .libro
+                .keys()
+                .min_by_key(|insumo| levenshtein(insumo, busqueda));
+            match probables {
+                Some(opcion) => {
+                    resultados.push(opcion.clone());
+                    return resultados;
+                }
+                None => return resultados,
+            }
+        }
+    }
+}
+pub mod servicios {
+
+    use crate::negocio;
+    use crate::repositorio;
+
+    pub struct ServicioDeAlmacen {
+        repositorio: String,
+    } //repositorio es donde va el box dyn o  sepa k
 }
