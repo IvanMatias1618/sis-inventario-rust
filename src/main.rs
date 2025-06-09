@@ -139,7 +139,7 @@ pub mod loops {
 
     pub fn crear_receta(
         receta: (String, Vec<(String, f64)>),
-        almacen: &mut ServicioDeAlmacen,
+        almacen: &ServicioDeAlmacen,
         libro: &mut servicio::ServicioDeRecetas,
     ) -> AppResult<String> {
         return match libro.añadir(receta.0.clone(), receta.1, almacen) {
@@ -414,7 +414,7 @@ pub mod repositorio {
         fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
         fn eliminar(&mut self, nombre: &str);
         fn buscar(&self, busqueda: &str) -> Vec<&String>;
-        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Insumo>;
+        fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Insumo>;
         fn mostrar_todos(&self) -> Vec<String>; //realmente sera un insumo pero hay que ver como)> ;
     }
 
@@ -516,7 +516,7 @@ pub mod repositorio {
             }
         }
 
-        fn obtener(&mut self, busqueda: &str) -> AppResult<&Insumo> {
+        fn obtener(&self, busqueda: &str) -> AppResult<&Insumo> {
             match self.bodega.get(busqueda) {
                 Some(insumo) => Ok(&insumo),
                 None => Err(AppError::DatoInvalido(format!(
@@ -697,7 +697,7 @@ pub mod servicio {
                 )));
             }
         }
-        pub fn obtener(&mut self, busqueda: &String) -> AppResult<&negocio::Insumo> {
+        pub fn obtener(&self, busqueda: &String) -> AppResult<&negocio::Insumo> {
             if self.existe(busqueda) {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(insumo) => Ok(insumo),
@@ -730,7 +730,7 @@ pub mod servicio {
             &mut self,
             n_receta: String,
             ingredientes: Vec<(String, f64)>,
-            mut almacen: &mut ServicioDeAlmacen,
+            almacen: &ServicioDeAlmacen,
         ) -> AppResult<()> {
             if n_receta.is_empty() {
                 return Err(AppError::DatoInvalido(
