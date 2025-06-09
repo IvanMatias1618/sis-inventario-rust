@@ -59,8 +59,8 @@ pub mod loops {
                             }
                         }
                     }
-
-                    match negocio::Receta::nuevo(nombre.clone(), insumos) {
+                    /*
+                    match negocio::Receta::nuevo(nombre.clone(), insumos, 8.9) {
                         Ok(receta) => {
                             recetario.añadir(&nombre, receta);
                             println!("la receta {} se ha agregado al recetario", nombre);
@@ -70,7 +70,7 @@ pub mod loops {
                             println!("hubo un error al crear la receta {}, Error: {}", nombre, e);
                             continue;
                         }
-                    }
+                    }*/
                 } //5
                 _ => continue,
             } //4
@@ -340,24 +340,22 @@ pub mod negocio {
     }
 
     impl Receta {
-        pub fn nuevo(nombre: String, insumos: Vec<(&Insumo, f64)>) -> AppResult<Receta> {
+        pub fn nuevo(
+            nombre: String,
+            ingredientes: Vec<(String, f64)>,
+            costo: f64,
+        ) -> AppResult<Receta> {
             if nombre.is_empty() {
                 return Err(AppError::DatoInvalido(
                     "el nombre no deberia estar vacio".to_string(),
                 ));
             };
-            if insumos.is_empty() {
+            if ingredientes.is_empty() {
                 return Err(AppError::DatoInvalido(
                     "el ingrediente: '{}' no existe".to_string(),
                 ));
             }
-            let costo = Receta::calcular_costo(&insumos);
 
-            let mut ingredientes: Vec<(String, f64)> = Vec::new();
-            for (insumo, cantidad) in &insumos {
-                let conjunto = (insumo.nombre().clone(), *cantidad);
-                ingredientes.push(conjunto);
-            }
             let mut receta = Receta {
                 id: Uuid::new_v4().to_string(),
                 nombre,
@@ -365,15 +363,6 @@ pub mod negocio {
                 costo,
             };
             Ok(receta)
-        }
-
-        fn calcular_costo(ingredientes: &Vec<(&Insumo, f64)>) -> f64 {
-            let mut costo: f64 = 0.0;
-            for (insumo, cantidad) in ingredientes {
-                costo += insumo.costo_por_gramos(*cantidad);
-                //espera, como llamamos al almacen :u
-            }
-            costo
         }
 
         pub fn costo(&self) -> f64 {
@@ -539,6 +528,7 @@ pub mod repositorio {
             }
         }
     }
+
     impl Bodega for AlmacenEnMemoria {
         fn cargar(&mut self) {
             match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
@@ -625,6 +615,7 @@ pub mod repositorio {
                 None => return resultados,
             }
         }
+
         fn obtener(&mut self, busqueda: &str) -> AppResult<&Insumo> {
             match self.bodega.get(busqueda) {
                 Some(insumo) => Ok(&insumo),
@@ -634,6 +625,7 @@ pub mod repositorio {
                 ))),
             }
         }
+
         fn mostrar_todos(&self) -> Vec<String> {
             let mut resultados: Vec<String> = Vec::new();
             for (clave, _) in &self.bodega {
@@ -677,6 +669,7 @@ pub mod repositorio {
             }
             resultado
         }
+
         fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
             match self.libro.get(busqueda) {
                 Some(receta) => Ok(&receta),
@@ -686,6 +679,7 @@ pub mod repositorio {
                 ))),
             }
         }
+
         fn buscar(&self, busqueda: &str) -> Vec<String> {
             let mut resultados = Vec::new();
             resultados = self
@@ -711,9 +705,8 @@ pub mod repositorio {
 pub mod servicios {
 
     use crate::auxiliares::{AppError, AppResult};
-    use crate::negocio;
-    use crate::repositorio::Bodega;
-    use rusqlite::ffi::sqlite3changeset_concat_strm;
+    use crate::negocio::{self, Receta};
+    use crate::repositorio::{Bodega, RecetasEnMemoria};
     use strsim::levenshtein;
 
     pub struct ServicioDeAlmacen {
@@ -721,7 +714,10 @@ pub mod servicios {
     }
 
     impl ServicioDeAlmacen {
-        fn nuevo(
+        fn nuevo(repo: Box<dyn Bodega>) -> Self {
+            ServicioDeAlmacen { repositorio: repo }
+        }
+        fn añadir(
             &mut self,
             nombre: String,
             cantidad: u32,
@@ -799,6 +795,89 @@ pub mod servicios {
                     "el insumo: {}, no existe.",
                     insumo
                 )));
+            }
+        }
+        fn obtener(&mut self, busqueda: &String) -> AppResult<&negocio::Insumo> {
+            if self.existe(busqueda) {
+                return match self.repositorio.obtener(busqueda) {
+                    Ok(insumo) => Ok(insumo),
+                    Err(e) => {
+                        return Err(AppError::ErrorPersonal(format!(
+                            "error al obtener el insumo: {}",
+                            busqueda
+                        )));
+                    }
+                };
+            }
+            return Err(AppError::ErrorPersonal(format!(
+                "No existe el insumo: {}",
+                busqueda
+            )));
+        }
+    }
+
+    pub struct ServicioDeRecetas {
+        repositorio: Box<dyn RecetasEnMemoria>,
+    }
+
+    impl ServicioDeRecetas {
+        fn nuevo(repositorio: Box<dyn RecetasEnMemoria>) -> Self {
+            ServicioDeRecetas {
+                repositorio: repositorio,
+            }
+        }
+        fn añadir(
+            &mut self,
+            n_receta: String,
+            ingredientes: Vec<(String, f64)>,
+            mut almacen: ServicioDeAlmacen,
+        ) -> AppResult<()> {
+            if n_receta.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "el nombre de la receta esta vacio".to_string(),
+                ));
+            }
+            let mut costo = 0.0;
+            for (nombre, cantidad) in &ingredientes {
+                if nombre.is_empty() {
+                    return Err(AppError::DatoInvalido(
+                        "el nombre del ingrediente esta vacio".to_string(),
+                    ));
+                }
+                if *cantidad <= 0.0 {
+                    return Err(AppError::DatoInvalido(
+                        "las cantidades no pueden ser menores a 0".to_string(),
+                    ));
+                }
+                if !almacen.existe(nombre) {
+                    return Err(AppError::DatoInvalido(format!(
+                        "el insumo: {}, no existe.",
+                        &nombre
+                    )));
+                }
+                match almacen.obtener(nombre) {
+                    Ok(insumo) => costo += insumo.costo_por_gramos(*cantidad),
+                    Err(e) => {
+                        return Err(AppError::ErrorPersonal(format!(
+                            "error: {}, al obtener el insumo: {}",
+                            e, nombre
+                        )));
+                    }
+                }
+            }
+
+            match negocio::Receta::nuevo(n_receta.clone(), ingredientes, costo) {
+                Ok(receta) => {
+                    let nuevo = receta;
+                    self.repositorio.añadir(nuevo);
+                    Ok(())
+                }
+                Err(e) => {
+                    return Err(AppError::ErrorPersonal(format!(
+                        "hubo un error al añadir la receta: {}, al repo {}",
+                        n_receta, e
+                    )));
+                }
             }
         }
     }
