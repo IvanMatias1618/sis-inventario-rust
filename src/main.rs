@@ -14,6 +14,8 @@ fn main() {
     let mut almacen = repositorio::AlmacenEnMemoria::nuevo();
     let mut recetario = repositorio::RecetarioEnMemoria::nuevo();
 
+    almacen.cargar();
+    println!("almacen cargado");
     let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
     let mut servicio_de_recetas = servicio::ServicioDeRecetas::nuevo(Box::new(recetario));
 
@@ -29,7 +31,10 @@ fn main() {
             2 => loop {
                 let insumo = loops::describir_insumo();
                 match loops::crear_insumo(insumo, &mut servicio_de_almacen) {
-                    Ok(respuesta) => println!("{}", respuesta),
+                    Ok(respuesta) => {
+                        println!("{}", respuesta);
+                        break;
+                    }
                     Err(e) => {
                         println!(
                             "error al crear el insumo: {}, deseas volver a intentar?
@@ -45,7 +50,31 @@ fn main() {
                     }
                 }
             },
-            3 => continue,
+            3 => loop {
+                let receta = loops::describir_receta(&servicio_de_almacen);
+                match loops::crear_receta(receta, &servicio_de_almacen, &mut servicio_de_recetas) {
+                    Ok(info) => println!("{}", info),
+                    Err(e) => {
+                        println!(" {}", e);
+                        println!("Deseas volver a intentarlo? \n 1) si. \n 2) no, volver al menu.");
+                        let res = auxiliares::no_es_cero();
+                        match res {
+                            1 => continue,
+                            2 => break,
+                            _ => break,
+                        }
+                    }
+                }
+            },
+            4 => {
+                println!("que insumo quieres busar?");
+                let busqueda = auxiliares::solicitar_texto();
+                let resultados = servicio_de_almacen.buscar(&busqueda);
+                println!("resultados de la busqueda: {}", busqueda);
+                for nombre in resultados {
+                    println!("{}", nombre)
+                }
+            }
             _ => break,
         }
     }
@@ -70,10 +99,11 @@ pub mod loops {
                 "Elije una opcion:
                  \n1) Salir del programa.
                  \n2) Crear Un Insumo.
-                 \n3) Crear una Receta. "
+                 \n3) Crear una Receta.
+                 \n4) Buscar un insumo"
             );
             let res = auxiliares::no_es_cero();
-            if res > 3 {
+            if res > 4 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
@@ -82,7 +112,7 @@ pub mod loops {
     }
 
     pub fn describir_insumo() -> (String, u32, u32, u32) {
-        println!("Hola! que nombre quieres para tu receta?:");
+        println!("Hola! que nombre quieres para tu insumo?:");
         let nombre = auxiliares::solicitar_texto();
         println!("cuantos gramos tienes de {}?:", &nombre);
         let cantidad = auxiliares::no_es_cero();
@@ -116,6 +146,8 @@ pub mod loops {
                     2 => break,
                     _ => break,
                 }
+            } else {
+                println!("no se encontro el insumo {}", insumo)
             }
         }
 
@@ -428,7 +460,7 @@ pub mod repositorio {
                 bodega: HashMap::new(),
             }
         }
-        fn cargar(&mut self) {
+        pub fn cargar(&mut self) {
             match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
                 Ok(insumo) => {
                     let mut nuevo = insumo;
