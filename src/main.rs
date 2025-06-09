@@ -53,7 +53,10 @@ fn main() {
             3 => loop {
                 let receta = loops::describir_receta(&servicio_de_almacen);
                 match loops::crear_receta(receta, &servicio_de_almacen, &mut servicio_de_recetas) {
-                    Ok(info) => println!("{}", info),
+                    Ok(info) => {
+                        println!("{}", info);
+                        break;
+                    }
                     Err(e) => {
                         println!(" {}", e);
                         println!("Deseas volver a intentarlo? \n 1) si. \n 2) no, volver al menu.");
@@ -203,7 +206,7 @@ pub mod auxiliares {
                 println!("el texto no deberia estar vacio, preuba nuevamente:");
                 continue;
             } //4
-            return buffer;
+            return buffer.trim().to_string();
         } //3
     } //2
     pub fn no_es_cero() -> u32 {
@@ -821,6 +824,9 @@ pub mod servicio {
                 .filter(|receta| receta.contains(busqueda))
                 .collect();
 
+            if !resultados.is_empty() {
+                return resultados;
+            }
             let probables = recetas
                 .into_iter()
                 .min_by_key(|receta| levenshtein(receta, busqueda));
