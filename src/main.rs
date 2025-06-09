@@ -1,5 +1,10 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
+//      SIGUIENTES TAREAS ANTES DE INICIAR EL MODULO DE LOOPS:
+//      1) mover AppResult y AppError a la capa negocio.
+//      2) eliminar capa de servicio.
+//      3) refinar pequeños ajustes varios: {
 //
+//      }
 
 fn main() {
     //Es buena practica dejar esta weada aquí para saber que todo esta al cien 7u7
@@ -879,6 +884,59 @@ pub mod servicios {
                     )));
                 }
             }
+        }
+        fn buscar(&self, busqueda: &str) -> Vec<String> {
+            let recetas = self.repositorio.listar();
+            let mut resultados: Vec<String> = Vec::new();
+            resultados = recetas
+                .clone()
+                .into_iter()
+                .filter(|receta| receta.contains(busqueda))
+                .collect();
+
+            let probables = recetas
+                .into_iter()
+                .min_by_key(|receta| levenshtein(receta, busqueda));
+            match probables {
+                Some(opcion) => {
+                    resultados.push(opcion.clone());
+                    return resultados;
+                }
+                None => return resultados,
+            }
+        }
+        fn existe(&self, busqueda: &str) -> bool {
+            let recetas = self.repositorio.listar();
+            if recetas.contains(&busqueda.to_string()) {
+                return true;
+            }
+            return false;
+        }
+
+        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
+            if self.existe(busqueda) {
+                return match self.repositorio.obtener(busqueda) {
+                    Ok(receta) => Ok(receta),
+                    Err(e) => Err(AppError::ErrorPersonal(format!(
+                        "error: {}, \nAl obtener el insumo: {}",
+                        e, busqueda
+                    ))),
+                };
+            }
+            return Err(AppError::DatoInvalido(format!(
+                "no se encontro la receta: {}",
+                busqueda
+            )));
+        }
+        fn eliminar(&mut self, busqueda: &str) -> AppResult<()> {
+            if self.existe(busqueda) {
+                self.repositorio.eliminar(busqueda);
+                return Ok(());
+            }
+            return Err(AppError::DatoInvalido(format!(
+                "Error al eliminar.: \nNo se encontro la receta: {}",
+                busqueda
+            )));
         }
     }
 }
