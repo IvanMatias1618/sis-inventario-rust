@@ -7,162 +7,149 @@
 //      }
 
 fn main() {
-    //Es buena practica dejar esta weada aquí para saber que todo esta al cien 7u7
-    loops::principal();
+    use crate::negocio;
+    use crate::repositorio;
+    use crate::servicio;
+
+    let mut almacen = repositorio::AlmacenEnMemoria::nuevo();
+    let mut recetario = repositorio::RecetarioEnMemoria::nuevo();
+
+    let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
+    let mut servicio_de_recetas = servicio::ServicioDeRecetas::nuevo(Box::new(recetario));
+
+    println!(
+        "Hola :) \n Bienvenid@ a tu siste de Inventario demo: 1
+             \nYa se ha creado el servicio de almacen y recetas."
+    );
+
+    loop {
+        let res = loops::menu();
+        match res {
+            1 => break,
+            2 => loop {
+                let insumo = loops::describir_insumo();
+                match loops::crear_insumo(insumo, &mut servicio_de_almacen) {
+                    Ok(respuesta) => println!("{}", respuesta),
+                    Err(e) => {
+                        println!(
+                            "error al crear el insumo: {}, deseas volver a intentar?
+                            \n 1) volver a intentar  \n2)Volver al menu principal",
+                            e
+                        );
+                        let respuesta = auxiliares::no_es_cero();
+                        match respuesta {
+                            1 => break,
+                            2 => continue,
+                            _ => continue,
+                        }
+                    }
+                }
+            },
+            3 => continue,
+            _ => break,
+        }
+    }
 }
 
 pub mod loops {
     //1
 
-    use crate::auxiliares;
+    use crate::auxiliares::{self, AppError, AppResult};
     use crate::negocio;
+    use crate::repositorio;
     use crate::servicio;
+    use crate::servicio::ServicioDeAlmacen;
     use std::io;
 
-    pub fn principal() {
-        //2
-
-        let mut almacen = servicio::Almacen::nuevo();
-        let mut recetario = servicio::Recetario::nuevo();
-
+    // Dado que estamos en una cli, estaran separadas las funciones de ui, y las de cli.
+    //
+    // FUNCIONES DE UI
+    pub fn menu() -> u32 {
         loop {
-            //3
-            println!("Hola! Bienvenid@ a tu inventario :3");
             println!(
-                "que queres hacer pequeñ@ amig@?  \n
-                1) Salir del programa. \n
-                2) Crear un insumo.  \n
-                3) Crear una receta. "
-            );
-            let numero: u32 = auxiliares::no_es_cero();
-            match numero {
-                //4
-                1 => break,
-                2 => {
-                    //5
-                    println!("Que nombre quieres para tu Insumo?");
-                    let nombre: String = auxiliares::solicitar_texto();
-                    let mut insumo = crear_insumo(&nombre);
-                    almacen.añadir(&nombre, insumo);
-                } //5
-                3 => {
-                    //5
-                    let mut nombre: String = String::new();
-                    println!("Que nombre quieres para tu receta?=");
-                    nombre = auxiliares::solicitar_texto();
-                    let mut ingredientes: Vec<(String, f64)> = solicitar_ingredientes(&almacen);
-                    let mut insumos: Vec<(&negocio::Insumo, f64)> = Vec::new();
-                    for (ingrediente, cantidad) in &ingredientes {
-                        match almacen.clave_insumo(ingrediente.as_str()) {
-                            Ok(insumo) => {
-                                let conjunto = (insumo, *cantidad);
-                                insumos.push(conjunto);
-                            }
-                            Err(e) => {
-                                println!("Ocurrio un error: {}", e);
-                                continue;
-                            }
-                        }
-                    }
-                    /*
-                    match negocio::Receta::nuevo(nombre.clone(), insumos, 8.9) {
-                        Ok(receta) => {
-                            recetario.añadir(&nombre, receta);
-                            println!("la receta {} se ha agregado al recetario", nombre);
-                            continue;
-                        }
-                        Err(e) => {
-                            println!("hubo un error al crear la receta {}, Error: {}", nombre, e);
-                            continue;
-                        }
-                    }*/
-                } //5
-                _ => continue,
-            } //4
-        } //3
-    } //2
-    pub fn crear_insumo(nombre: &String) -> negocio::Insumo {
-        //2
-        loop {
-            //3
-            println!("Cual es la cantidad en gramos del insumo");
-            let cantidad: u32 = auxiliares::no_es_cero();
-            println!("Cual es la cantidad minima de gramos");
-            let cantidad_minima: u32 = auxiliares::no_es_cero();
-            println!("Cual es el precio del insumo");
-            let precio: u32 = auxiliares::no_es_cero();
-            println!("creando insumo..");
-            match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
-                //4
-                Ok(insumo) => return insumo,
-                Err(e) => {
-                    //5
-                    println!("ocurrio un error al crear el insumo: {}", e);
-                    continue;
-                }
-            } //4
-        } //3
-    } //2
-    pub fn solicitar_ingredientes(almacen: &servicio::Almacen) -> Vec<(String, f64)> {
-        //2
-        let mut ingredientes: Vec<(String, f64)> = Vec::new();
-        loop {
-            //3
-            println!("que ingrediente quieres usar para tu receta?");
-            let mut ingrediente: String = auxiliares::solicitar_texto();
-            almacen.buscar_clave(&ingrediente.as_str());
-            println!("ingresa nuevamente el nombre del insumo:");
-            match almacen.clave_insumo(&ingrediente.as_str()) {
-                //4
-                Ok(_) => (),
-                Err(e) => {
-                    println!("ocurrio un error al buscar el insumo: {}", e);
-                    continue;
-                }
-            } //4
-            println!(
-                "Quieres escribir nuevamente el nombre de tu insumo? \n
-                1) si \n
-                 2) no, seguir con este nombre"
-            );
-            let mut res = auxiliares::no_es_cero();
-            match res {
-                //4
-                1 => continue,
-                2 => (),
-                3 => continue,
-                _ => continue,
-            } //4 
-            match almacen.clave_insumo(&ingrediente.as_str()) {
-                //4
-                Ok(_) => (),
-                Err(e) => {
-                    println!(
-                        "ocurrio un error al buscar el insumo {}: {}",
-                        ingrediente, e
-                    );
-                    continue;
-                }
-            } //4
-            println!("cuantos gramos queres usar?");
-            res = auxiliares::no_es_cero();
-            let res: f64 = res as f64;
-            let conjunto = (ingrediente, res);
-            ingredientes.push(conjunto);
-            println!(
-                "Quieres añadir mas ingredientes a esta receta?\n
-                1) si. \n
-                2) no, es todo."
+                "Elije una opcion:
+                 \n1) Salir del programa.
+                 \n2) Crear Un Insumo.
+                 \n3) Crear una Receta. "
             );
             let res = auxiliares::no_es_cero();
-            match res {
-                //4
-                1 => continue,
-                2 => return ingredientes,
-                _ => continue,
-            } //4
-        } //3
-    } //2
+            if res > 3 {
+                println!("por favor elije una respuesta dentro de las opciones.");
+                continue;
+            }
+            return res;
+        }
+    }
+
+    pub fn describir_insumo() -> (String, u32, u32, u32) {
+        println!("Hola! que nombre quieres para tu receta?:");
+        let nombre = auxiliares::solicitar_texto();
+        println!("cuantos gramos tienes de {}?:", &nombre);
+        let cantidad = auxiliares::no_es_cero();
+        println!("cual es el costo de '{}' por kilo?:", &nombre);
+        let costo = auxiliares::no_es_cero();
+        println!(
+            "Cual es la cantidad minima que esperas tener en tu inventario del insumo: '{}'",
+            &nombre
+        );
+        let cantidad_minima = auxiliares::no_es_cero();
+        return (nombre, cantidad, cantidad_minima, costo);
+    }
+    pub fn describir_receta(almacen: &ServicioDeAlmacen) -> (String, Vec<(String, f64)>) {
+        println!("Como quieres que se llame la receta?");
+        let nombre = auxiliares::solicitar_texto();
+        let mut ingredientes: Vec<(String, f64)> = Vec::new();
+        loop {
+            println!("Que ingrediente quieres usar?");
+            let insumo = auxiliares::solicitar_texto();
+            if almacen.existe(&insumo) {
+                println!("cuantos gramos quieres usar de: {}", &insumo);
+                let cantidad = auxiliares::no_es_cero();
+                let fcantidad: f64 = cantidad as f64;
+                let conjunto = (insumo.clone(), fcantidad.clone());
+                ingredientes.push(conjunto);
+                println!("se usara el insumo: {}, con: {} grs. \n quieres añadir mas ingredientes a la receta?
+                \n 1) si. \n2) no.", &insumo, &fcantidad);
+                let respuesta = auxiliares::no_es_cero();
+                match respuesta {
+                    1 => continue,
+                    2 => break,
+                    _ => break,
+                }
+            }
+        }
+
+        return (nombre, ingredientes);
+    }
+
+    //   FUNCIONES DE CLI
+    //
+    pub fn crear_insumo(
+        insumo: (String, u32, u32, u32),
+        almacen: &mut ServicioDeAlmacen,
+    ) -> AppResult<String> {
+        return match almacen.añadir(insumo.0.clone(), insumo.1, insumo.2, insumo.3) {
+            Ok(_) => Ok(format!("se ha creado el insumo: {}", insumo.0)),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "Error al crear el insumo: {}, error: {}",
+                insumo.0, e
+            ))),
+        };
+    }
+
+    pub fn crear_receta(
+        receta: (String, Vec<(String, f64)>),
+        almacen: &mut ServicioDeAlmacen,
+        libro: &mut servicio::ServicioDeRecetas,
+    ) -> AppResult<String> {
+        return match libro.añadir(receta.0.clone(), receta.1, almacen) {
+            Ok(_) => Ok(format!("se ha creado la receta: {}", receta.0)),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "hubo un error al crear la receta: {}, error: {}",
+                receta.0, e
+            ))),
+        };
+    }
 } //1
 
 pub mod auxiliares {
@@ -417,96 +404,6 @@ pub mod negocio {
     }
 }
 
-pub mod servicio {
-    use crate::auxiliares::{AppError, AppResult, no_es_cero, solicitar_texto};
-    use crate::negocio::{Insumo, Receta};
-    use std::collections::HashMap;
-
-    pub struct Almacen {
-        bodega: HashMap<String, Insumo>,
-    }
-
-    impl Almacen {
-        pub fn nuevo() -> Self {
-            Almacen {
-                bodega: HashMap::new(),
-            }
-        }
-        pub fn añadir(&mut self, clave: &String, insumo: Insumo) {
-            self.bodega.insert(clave.clone(), insumo);
-        }
-        pub fn buscar_clave(&self, busqueda: &str) {
-            use strsim::levenshtein;
-            let probables: Vec<_> = self
-                .bodega
-                .keys()
-                .filter(|nombre| nombre.contains(busqueda))
-                .collect();
-            println!("Coincidencias: {:?}", probables);
-
-            let probables = self
-                .bodega
-                .keys()
-                .min_by_key(|nombre| levenshtein(nombre, busqueda));
-            match probables {
-                Some(nombre) => println!("O quisiste decir: {}?", nombre),
-                None => println!("No se encontraron coincidencias. "),
-            };
-        }
-        pub fn clave_insumo(&self, nombre: &str) -> AppResult<&Insumo> {
-            match self.bodega.get(nombre) {
-                Some(insumo) => return Ok(&insumo),
-                None => {
-                    return Err(AppError::DatoInvalido(format!(
-                        "no se encontro el insumo {}",
-                        nombre
-                    )));
-                }
-            }
-        }
-    }
-    pub struct Recetario {
-        recetas: HashMap<String, Receta>,
-    }
-
-    impl Recetario {
-        pub fn nuevo() -> Self {
-            Recetario {
-                recetas: HashMap::new(),
-            }
-        }
-
-        pub fn añadir(&mut self, nombre: &String, receta: Receta) -> AppResult<()> {
-            if *nombre != receta.nombre().clone() {
-                return Err(AppError::DatoInvalido(format!(
-                    "la receta: {} no existe. te refieres a: {}?",
-                    nombre,
-                    receta.nombre()
-                )));
-            }
-            self.recetas.insert(nombre.clone(), receta);
-            Ok(())
-        }
-        pub fn buscar_clave(&self, busqueda: &str) {
-            use strsim::levenshtein;
-            let probables: Vec<_> = self
-                .recetas
-                .keys()
-                .filter(|nombre| nombre.contains(busqueda))
-                .collect();
-            println!("Coincidencias: {:?}", probables);
-            let probables = self
-                .recetas
-                .keys()
-                .min_by_key(|nombre| levenshtein(nombre, busqueda));
-            match probables {
-                Some(nombre) => println!("O quisiste decir: {}?", nombre),
-                None => println!("No se encontraron coincidencias. "),
-            }
-        }
-    }
-}
-
 pub mod repositorio {
     use crate::auxiliares::{AppError, AppResult};
     use crate::negocio::{self, Insumo};
@@ -514,7 +411,6 @@ pub mod repositorio {
     use strsim::levenshtein;
 
     pub trait Bodega {
-        fn cargar(&mut self);
         fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
         fn eliminar(&mut self, nombre: &str);
         fn buscar(&self, busqueda: &str) -> Vec<&String>;
@@ -527,14 +423,11 @@ pub mod repositorio {
     }
 
     impl AlmacenEnMemoria {
-        fn nuevo() -> Self {
+        pub fn nuevo() -> Self {
             AlmacenEnMemoria {
                 bodega: HashMap::new(),
             }
         }
-    }
-
-    impl Bodega for AlmacenEnMemoria {
         fn cargar(&mut self) {
             match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
                 Ok(insumo) => {
@@ -595,6 +488,8 @@ pub mod repositorio {
                 Err(_) => (),
             }
         }
+    }
+    impl Bodega for AlmacenEnMemoria {
         fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo) {
             self.bodega.insert(nombre.to_string(), insumo);
         }
@@ -653,7 +548,7 @@ pub mod repositorio {
     }
 
     impl RecetarioEnMemoria {
-        fn nuevo() -> Self {
+        pub fn nuevo() -> Self {
             RecetarioEnMemoria {
                 libro: HashMap::new(),
             }
@@ -707,7 +602,7 @@ pub mod repositorio {
         }
     }
 }
-pub mod servicios {
+pub mod servicio {
 
     use crate::auxiliares::{AppError, AppResult};
     use crate::negocio::{self, Receta};
@@ -719,10 +614,10 @@ pub mod servicios {
     }
 
     impl ServicioDeAlmacen {
-        fn nuevo(repo: Box<dyn Bodega>) -> Self {
+        pub fn nuevo(repo: Box<dyn Bodega>) -> Self {
             ServicioDeAlmacen { repositorio: repo }
         }
-        fn añadir(
+        pub fn añadir(
             &mut self,
             nombre: String,
             cantidad: u32,
@@ -762,7 +657,7 @@ pub mod servicios {
                 ))),
             }
         }
-        fn buscar(&self, busqueda: &str) -> Vec<String> {
+        pub fn buscar(&self, busqueda: &str) -> Vec<String> {
             let lista = self.repositorio.mostrar_todos();
             let mut resultados = Vec::new();
             resultados = lista
@@ -782,7 +677,7 @@ pub mod servicios {
             }
         }
 
-        fn existe(&self, busqueda: &String) -> bool {
+        pub fn existe(&self, busqueda: &String) -> bool {
             let lista = self.repositorio.mostrar_todos();
             if lista.contains(busqueda) {
                 return true;
@@ -791,7 +686,7 @@ pub mod servicios {
             }
         }
 
-        fn eliminar(&mut self, insumo: &str) -> AppResult<()> {
+        pub fn eliminar(&mut self, insumo: &str) -> AppResult<()> {
             if self.existe(&insumo.to_string()) {
                 self.repositorio.eliminar(insumo);
                 return Ok(());
@@ -802,7 +697,7 @@ pub mod servicios {
                 )));
             }
         }
-        fn obtener(&mut self, busqueda: &String) -> AppResult<&negocio::Insumo> {
+        pub fn obtener(&mut self, busqueda: &String) -> AppResult<&negocio::Insumo> {
             if self.existe(busqueda) {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(insumo) => Ok(insumo),
@@ -826,16 +721,16 @@ pub mod servicios {
     }
 
     impl ServicioDeRecetas {
-        fn nuevo(repositorio: Box<dyn RecetasEnMemoria>) -> Self {
+        pub fn nuevo(repositorio: Box<dyn RecetasEnMemoria>) -> Self {
             ServicioDeRecetas {
                 repositorio: repositorio,
             }
         }
-        fn añadir(
+        pub fn añadir(
             &mut self,
             n_receta: String,
             ingredientes: Vec<(String, f64)>,
-            mut almacen: ServicioDeAlmacen,
+            mut almacen: &mut ServicioDeAlmacen,
         ) -> AppResult<()> {
             if n_receta.is_empty() {
                 return Err(AppError::DatoInvalido(
@@ -885,7 +780,7 @@ pub mod servicios {
                 }
             }
         }
-        fn buscar(&self, busqueda: &str) -> Vec<String> {
+        pub fn buscar(&self, busqueda: &str) -> Vec<String> {
             let recetas = self.repositorio.listar();
             let mut resultados: Vec<String> = Vec::new();
             resultados = recetas
@@ -905,7 +800,7 @@ pub mod servicios {
                 None => return resultados,
             }
         }
-        fn existe(&self, busqueda: &str) -> bool {
+        pub fn existe(&self, busqueda: &str) -> bool {
             let recetas = self.repositorio.listar();
             if recetas.contains(&busqueda.to_string()) {
                 return true;
@@ -913,7 +808,7 @@ pub mod servicios {
             return false;
         }
 
-        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
+        pub fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
             if self.existe(busqueda) {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(receta) => Ok(receta),
@@ -928,7 +823,7 @@ pub mod servicios {
                 busqueda
             )));
         }
-        fn eliminar(&mut self, busqueda: &str) -> AppResult<()> {
+        pub fn eliminar(&mut self, busqueda: &str) -> AppResult<()> {
             if self.existe(busqueda) {
                 self.repositorio.eliminar(busqueda);
                 return Ok(());
