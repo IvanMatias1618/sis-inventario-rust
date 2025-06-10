@@ -245,7 +245,18 @@ fn main() {
                 }
                 break;
             },
-            _ => break,
+            12 => loop {
+                if loops::ui_producir_receta(&mut servicio_de_almacen, &servicio_de_recetas) {
+                    break;
+                }
+                if reintentar() {
+                    continue;
+                }
+                break;
+            },
+            _ => loop {
+                println!("No soy un chihuahua ! \n si soy un chihuahua");
+            },
         }
     }
 }
@@ -278,10 +289,11 @@ pub mod loops {
                  \n8) Ver el valor de un Insumo.
                  \n9) Ver el valor de una Receta.
                  \n10) Eliminar Insumo.
-                 \n11) Eliminar Receta."
+                 \n11) Eliminar Receta.
+                 \n12) Producir Receta."
             );
             let res = auxiliares::no_es_cero();
-            if res > 11 {
+            if res > 30 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
@@ -381,6 +393,40 @@ pub mod loops {
         }
     }
 
+    pub fn ui_producir_receta(almacen: &mut ServicioDeAlmacen, libro: &ServicioDeRecetas) -> bool {
+        println!("Que receta quieres producir?");
+        let receta = solicitar_texto();
+        if !libro.existe(&receta) {
+            println!(
+                "No se encontro la receta: {}.\nBuscando similitudes...",
+                &receta
+            );
+            let resultados = libro.buscar(&receta);
+            if resultados.is_empty() {
+                println!("No se encontraron similitudes con: {}", receta);
+                return false;
+            } else {
+                for resultado in resultados {
+                    println!("{}", resultado);
+                }
+            }
+            return false;
+        } else {
+            println!("cuantas unidades quieres producir?");
+            let cantidad = no_es_cero();
+            match producir_recetas(almacen, libro, &receta, cantidad) {
+                Ok(_) => {
+                    println!("se han creado: {} {}", receta, cantidad);
+                    return true;
+                }
+                Err(e) => {
+                    println!("{}", e);
+                    return false;
+                }
+            }
+        }
+    }
+
     //   FUNCIONES DE CLI
     //
     pub fn crear_insumo(
@@ -406,6 +452,21 @@ pub mod loops {
             Err(e) => Err(AppError::ErrorPersonal(format!(
                 "hubo un error al crear la receta: {}, error: {}",
                 receta.0, e
+            ))),
+        };
+    }
+
+    pub fn producir_recetas(
+        almacen: &mut ServicioDeAlmacen,
+        libro: &ServicioDeRecetas,
+        receta: &String,
+        cantidad: u32,
+    ) -> AppResult<()> {
+        return match libro.producir_receta(almacen, receta, cantidad) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "Error: {}, al producir la receta: {}",
+                e, receta
             ))),
         };
     }
