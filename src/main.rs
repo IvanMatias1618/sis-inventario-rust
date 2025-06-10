@@ -100,6 +100,28 @@ fn main() {
                     }
                 }
             }
+            6 => {
+                println!("Buscando recetas...");
+                let resultados = servicio_de_almacen.mostrar_todos();
+                if resultados.is_empty() {
+                    println!("no hay insumos en el almacen.");
+                } else {
+                    for resultado in resultados {
+                        println!("{}", resultado);
+                    }
+                }
+            }
+            7 => {
+                println!("Buscando recetas...");
+                let resultados = servicio_de_recetas.mostrar_todos();
+                if resultados.is_empty() {
+                    println!("el libro de recetas esta vacio")
+                } else {
+                    for resultado in resultados {
+                        println!("{}", resultado);
+                    }
+                }
+            }
             _ => break,
         }
     }
@@ -125,10 +147,14 @@ pub mod loops {
                  \n2) Crear Un Insumo.
                  \n3) Crear una Receta.
                  \n4) Buscar un insumo.
-                 \n5) Buscar una receta."
+                 \n5) Buscar una receta.
+                 \n6) Ver todos los insumos.
+                 \n7) Ver todas las recetas.
+                 \n8) Ver el valor de un Insumo.
+                 \n9) Ver el valor de una Receta"
             );
             let res = auxiliares::no_es_cero();
-            if res > 5 {
+            if res > 9 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
@@ -214,6 +240,12 @@ pub mod loops {
 
     pub fn buscar_receta(libro: &ServicioDeRecetas, busqueda: &String) -> Vec<String> {
         return libro.buscar(busqueda);
+    }
+    pub fn ver_todos_los_insumos(almacen: &ServicioDeAlmacen) -> Vec<String> {
+        return almacen.mostrar_todos();
+    }
+    pub fn ver_todos_las_recetas(libro: &ServicioDeRecetas) -> Vec<String> {
+        return libro.mostrar_todos();
     }
 } //1
 
@@ -778,6 +810,10 @@ pub mod servicio {
                 busqueda
             )));
         }
+
+        pub fn mostrar_todos(&self) -> Vec<String> {
+            return self.repositorio.mostrar_todos();
+        }
     }
 
     pub struct ServicioDeRecetas {
@@ -899,6 +935,9 @@ pub mod servicio {
                 "Error al eliminar.: \nNo se encontro la receta: {}",
                 busqueda
             )));
+        }
+        pub fn mostrar_todos(&self) -> Vec<String> {
+            return self.repositorio.listar();
         }
     }
 }
