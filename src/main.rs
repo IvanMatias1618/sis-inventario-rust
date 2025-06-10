@@ -316,21 +316,20 @@ pub mod loops {
         let cantidad_minima = auxiliares::no_es_cero();
         return (nombre, cantidad, cantidad_minima, costo);
     }
-    pub fn describir_receta(almacen: &ServicioDeAlmacen) -> (String, Vec<(String, f64)>) {
+    pub fn describir_receta(almacen: &ServicioDeAlmacen) -> (String, Vec<(String, u32)>) {
         println!("Como quieres que se llame la receta?");
         let nombre = auxiliares::solicitar_texto();
-        let mut ingredientes: Vec<(String, f64)> = Vec::new();
+        let mut ingredientes: Vec<(String, u32)> = Vec::new();
         loop {
             println!("Que ingrediente quieres usar?");
             let insumo = auxiliares::solicitar_texto();
             if almacen.existe(&insumo) {
                 println!("cuantos gramos quieres usar de: {}", &insumo);
                 let cantidad = auxiliares::no_es_cero();
-                let fcantidad: f64 = cantidad as f64;
-                let conjunto = (insumo.clone(), fcantidad.clone());
+                let conjunto = (insumo.clone(), cantidad);
                 ingredientes.push(conjunto);
-                println!("se usara el insumo: {}, con: {} grs. \n quieres añadir mas ingredientes a la receta?
-                \n 1) si. \n2) no.", &insumo, &fcantidad);
+                println!("se usara el insumo: {}, con: {} grs. \nQuieres añadir mas ingredientes a la receta?
+                \n 1) si. \n2) no.", &insumo, cantidad);
                 let respuesta = auxiliares::no_es_cero();
                 match respuesta {
                     1 => continue,
@@ -398,7 +397,7 @@ pub mod loops {
     }
 
     pub fn crear_receta(
-        receta: (String, Vec<(String, f64)>),
+        receta: (String, Vec<(String, u32)>),
         almacen: &ServicioDeAlmacen,
         libro: &mut ServicioDeRecetas,
     ) -> AppResult<String> {
@@ -435,7 +434,7 @@ pub mod loops {
     pub fn mostrar_receta(
         libro: &ServicioDeRecetas,
         busqueda: &String,
-    ) -> AppResult<(String, Vec<(String, f64)>, f64)> {
+    ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
         libro.mostrar_receta(busqueda)
     }
     pub fn eliminar_receta(libro: &mut ServicioDeRecetas, busqueda: &String) -> AppResult<String> {
@@ -662,7 +661,7 @@ pub mod negocio {
     pub struct Receta {
         id: String,
         nombre: String,
-        ingredientes: Vec<(String, f64)>,
+        ingredientes: Vec<(String, u32)>,
         costo: f64,
     }
 
@@ -698,7 +697,7 @@ pub mod negocio {
         pub fn nombre(&self) -> &String {
             &self.nombre
         }
-        pub fn ingredientes(&self) -> Vec<(String, f64)> {
+        pub fn ingredientes(&self) -> Vec<(String, u32)> {
             self.ingredientes.clone()
         }
     }
@@ -865,8 +864,8 @@ pub mod repositorio {
         }
 
         fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo> {
-            match self.bodega.get(busqueda.as_str()) {
-                Some(insumo) => Ok(insumo),
+            match self.bodega.get_mut(busqueda) {
+                Some(mut insumo) => Ok(insumo),
                 None => Err(AppError::ErrorPersonal(format!(
                     "Error al encontrar el insumo: {}",
                     busqueda
@@ -930,8 +929,8 @@ pub mod repositorio {
         }
 
         fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta> {
-            match self.libro.get(busqueda.as_str()) {
-                Some(receta) => Ok(receta),
+            match self.libro.get_mut(busqueda) {
+                Some(mut receta) => Ok(receta),
                 None => Err(AppError::ErrorPersonal(format!(
                     "No se encontro la receta: {}, en el libro.",
                     busqueda
@@ -962,7 +961,6 @@ pub mod repositorio {
     }
 }
 pub mod servicio {
-    use std::slice::range;
 
     use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
     use crate::repositorio::{Bodega, RecetasEnMemoria};
@@ -1098,7 +1096,6 @@ pub mod servicio {
             }
             match self.obtener_mutable(busqueda) {
                 Ok(insumo) => {
-                    let mut ingrediente = insumo;
                     insumo.usar(cantidad);
                     return Ok(insumo.obtener_cantidad());
                 }
@@ -1152,7 +1149,7 @@ pub mod servicio {
         pub fn añadir(
             &mut self,
             n_receta: String,
-            ingredientes: Vec<(String, f64)>,
+            ingredientes: Vec<(String, u32)>,
             almacen: &ServicioDeAlmacen,
         ) -> AppResult<()> {
             if n_receta.is_empty() {
@@ -1167,7 +1164,7 @@ pub mod servicio {
                         "el nombre del ingrediente esta vacio".to_string(),
                     ));
                 }
-                if *cantidad <= 0.0 {
+                if *cantidad <= 0 {
                     return Err(AppError::DatoInvalido(
                         "las cantidades no pueden ser menores a 0".to_string(),
                     ));
@@ -1179,7 +1176,7 @@ pub mod servicio {
                     )));
                 }
                 match almacen.obtener(nombre) {
-                    Ok(insumo) => costo += insumo.costo_por_gramos(*cantidad),
+                    Ok(insumo) => costo += insumo.costo_por_gramos((*cantidad).into()),
                     Err(e) => {
                         return Err(AppError::ErrorPersonal(format!(
                             "error: {}, al obtener el insumo: {}",
@@ -1315,7 +1312,7 @@ pub mod servicio {
             if self.existe(nombre_receta) {
                 match self.obtener(nombre_receta) {
                     Ok(receta) => {
-                        for producto in range(cantidad..0) {
+                        for producto in 0..cantidad {
                             for (nombre, cant) in receta.ingredientes() {
                                 if !almacen.existe(&nombre) {
                                     return Err(AppError::DatoInvalido(format!(
