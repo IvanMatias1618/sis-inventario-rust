@@ -623,14 +623,10 @@ pub mod negocio {
         pub fn usar(&mut self, cantidad: u32) -> AppResult<()> {
             if cantidad < self.cantidad {
                 self.cantidad -= cantidad;
-                println!("se han usado: {} gramos", cantidad);
-                if self.alerta_cantidad_minima() {
-                    println!("Alerta! la cantidad del insumo es baja.: {}", self.cantidad);
-                }
                 return Ok(());
             }
             Err(AppError::ErrorPersonal(
-                "No hay suficiente Stock para usar".to_string(),
+                "No hay suficientes gramos para usar".to_string(),
             ))
         }
 
@@ -673,7 +669,7 @@ pub mod negocio {
     impl Receta {
         pub fn nuevo(
             nombre: String,
-            ingredientes: Vec<(String, f64)>,
+            ingredientes: Vec<(String, u32)>,
             costo: f64,
         ) -> AppResult<Receta> {
             if nombre.is_empty() {
@@ -756,6 +752,7 @@ pub mod repositorio {
         fn eliminar(&mut self, nombre: &str);
         fn buscar(&self, busqueda: &str) -> Vec<&String>;
         fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Insumo>;
+        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo>;
         fn mostrar_todos(&self) -> Vec<String>; //realmente sera un insumo pero hay que ver como)> ;
     }
 
@@ -867,6 +864,16 @@ pub mod repositorio {
             }
         }
 
+        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo> {
+            match self.bodega.get(busqueda.as_str()) {
+                Some(insumo) => Ok(insumo),
+                None => Err(AppError::ErrorPersonal(format!(
+                    "Error al encontrar el insumo: {}",
+                    busqueda
+                ))),
+            }
+        }
+
         fn mostrar_todos(&self) -> Vec<String> {
             let mut resultados: Vec<String> = Vec::new();
             for (clave, _) in &self.bodega {
@@ -880,6 +887,7 @@ pub mod repositorio {
         fn añadir(&mut self, receta: negocio::Receta);
         fn eliminar(&mut self, nombre: &str);
         fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta>;
+        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta>;
         fn buscar(&self, busqueda: &str) -> Vec<String>;
         fn listar(&self) -> Vec<String>;
     }
@@ -921,6 +929,16 @@ pub mod repositorio {
             }
         }
 
+        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta> {
+            match self.libro.get(busqueda.as_str()) {
+                Some(receta) => Ok(receta),
+                None => Err(AppError::ErrorPersonal(format!(
+                    "No se encontro la receta: {}, en el libro.",
+                    busqueda
+                ))),
+            }
+        }
+
         fn buscar(&self, busqueda: &str) -> Vec<String> {
             let mut resultados = Vec::new();
             resultados = self
@@ -944,6 +962,7 @@ pub mod repositorio {
     }
 }
 pub mod servicio {
+    use std::slice::range;
 
     use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
     use crate::repositorio::{Bodega, RecetasEnMemoria};
@@ -1054,7 +1073,41 @@ pub mod servicio {
                 busqueda
             )));
         }
+        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo> {
+            if self.existe(busqueda) {
+                return match self.repositorio.obtener_mutable(busqueda) {
+                    Ok(insumo) => Ok(insumo),
+                    Err(e) => Err(AppError::ErrorPersonal(format!(
+                        "Error al obtener el insumo: {}. \nError: {}",
+                        busqueda, e
+                    ))),
+                };
+            }
+            return Err(AppError::DatoInvalido(format!(
+                "No existe el insumo: {} en el almacen.",
+                busqueda
+            )));
+        }
 
+        pub fn usar(&mut self, busqueda: &String, cantidad: u32) -> AppResult<u32> {
+            if !self.existe(busqueda) {
+                return Err(AppError::DatoInvalido(format!(
+                    "No existe el insumo: {}, en el almacen.",
+                    busqueda
+                )));
+            }
+            match self.obtener_mutable(busqueda) {
+                Ok(insumo) => {
+                    let mut ingrediente = insumo;
+                    insumo.usar(cantidad);
+                    return Ok(insumo.obtener_cantidad());
+                }
+                Err(e) => Err(AppError::ErrorPersonal(format!(
+                    "Error al obtener el insumo: {}. \nError: {}",
+                    busqueda, e
+                ))),
+            }
+        }
         pub fn mostrar_todos(&self) -> Vec<String> {
             return self.repositorio.mostrar_todos();
         }
@@ -1196,6 +1249,23 @@ pub mod servicio {
                 busqueda
             )));
         }
+
+        pub fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta> {
+            if self.existe(busqueda) {
+                return match self.repositorio.obtener_mutable(busqueda) {
+                    Ok(receta) => Ok(receta),
+                    Err(e) => Err(AppError::ErrorPersonal(format!(
+                        "Error al obtener la receta: {}. \n {}",
+                        busqueda, e
+                    ))),
+                };
+            }
+            return Err(AppError::DatoInvalido(format!(
+                "le receta: {}, No existe en el libro.",
+                busqueda
+            )));
+        }
+
         pub fn eliminar(&mut self, busqueda: &str) -> AppResult<()> {
             if self.existe(busqueda) {
                 self.repositorio.eliminar(busqueda);
@@ -1213,7 +1283,7 @@ pub mod servicio {
         pub fn mostrar_receta(
             &self,
             busqueda: &String,
-        ) -> AppResult<(String, Vec<(String, f64)>, f64)> {
+        ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
             if self.existe(busqueda) {
                 return match self.obtener(busqueda) {
                     Ok(receta) => {
@@ -1235,6 +1305,58 @@ pub mod servicio {
                     busqueda
                 )));
             }
+        }
+        pub fn producir_receta(
+            &self,
+            almacen: &mut ServicioDeAlmacen,
+            nombre_receta: &String,
+            cantidad: u32,
+        ) -> AppResult<()> {
+            if self.existe(nombre_receta) {
+                match self.obtener(nombre_receta) {
+                    Ok(receta) => {
+                        for producto in range(cantidad..0) {
+                            for (nombre, cant) in receta.ingredientes() {
+                                if !almacen.existe(&nombre) {
+                                    return Err(AppError::DatoInvalido(format!(
+                                        "el insumo: {}, no esta en almacen.",
+                                        nombre
+                                    )));
+                                }
+                                match almacen.obtener_mutable(&nombre) {
+                                    Ok(insumo) => match insumo.usar(cant) {
+                                        Ok(_) => continue,
+
+                                        Err(e) => {
+                                            return Err(AppError::ErrorPersonal(format!(
+                                                "Error: {}. \nAl usar el insumo: {}",
+                                                e, nombre
+                                            )));
+                                        }
+                                    },
+                                    Err(e) => {
+                                        return Err(AppError::ErrorPersonal(format!(
+                                            "Error al obtener el insumo: {} del almacen.",
+                                            nombre
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(AppError::ErrorPersonal(format!(
+                            "Error al obtener la receta: {}, \nError: {}",
+                            nombre_receta, e
+                        )));
+                    }
+                }
+            }
+            return Err(AppError::DatoInvalido(format!(
+                "La receta: {} no existe en el libro.",
+                nombre_receta
+            )));
         }
     }
 }
