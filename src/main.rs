@@ -5,7 +5,7 @@
 //
 //      }
 
-use auxiliares::solicitar_texto;
+use auxiliares::{no_es_cero, solicitar_texto};
 
 fn main() {
     use crate::auxiliares;
@@ -122,9 +122,32 @@ fn main() {
                     }
                 }
             }
-            8 => {
+            8 => loop {
                 println!("Que insumo quieres buscar?");
                 let busqueda = solicitar_texto();
+                if !servicio_de_almacen.existe(&busqueda) {
+                    println!(
+                        "No se encontro el insumo: {}. \nBuscando coincidencias...",
+                        &busqueda
+                    );
+                    let resultados = servicio_de_almacen.buscar(&busqueda);
+                    if resultados.is_empty() {
+                        println!(
+                            "No se encontraron coincidencias. \n Desear reintentar? \n1) Si. \n2) No."
+                        );
+                        let respuesta = no_es_cero();
+                        match respuesta {
+                            1 => break,
+                            2 => continue,
+                            _ => continue,
+                        }
+                    } else {
+                        for resultado in resultados {
+                            println!("{}", resultado);
+                            continue;
+                        }
+                    }
+                }
                 match servicio_de_almacen.mostrar_insumo(&busqueda) {
                     Ok(insumo) => {
                         let conjunto = insumo;
@@ -136,14 +159,26 @@ fn main() {
                             \nPrecio por kilo: {}.",
                             busqueda, conjunto.0, conjunto.1, conjunto.2, conjunto.3
                         );
+                        break;
                     }
-                    Err(e) => println!(
-                        "hubo un error al buscar el insumo: {}, \nError: {}",
-                        busqueda, e
-                    ),
+                    Err(e) => {
+                        println!(
+                            "hubo un error al buscar el insumo: {}, \nError: {}",
+                            busqueda, e
+                        );
+                        println!("Deseas reintentar? \n1) Si. \n2) No, salir al menú.");
+                        let res = no_es_cero();
+                        match res {
+                            1 => continue,
+                            2 => break,
+                            _ => continue,
+                        }
+                    }
                 }
+            },
+            9 => {
+                println!()
             }
-            9 => continue,
             _ => break,
         }
     }
@@ -498,6 +533,9 @@ pub mod negocio {
         pub fn nombre(&self) -> &String {
             &self.nombre
         }
+        pub fn ingredientes(&self) -> Vec<(String, f64)> {
+            self.ingredientes.clone()
+        }
     }
 
     pub struct Venta<Tz: chrono::TimeZone> {
@@ -672,7 +710,7 @@ pub mod repositorio {
     pub trait RecetasEnMemoria {
         fn añadir(&mut self, receta: negocio::Receta);
         fn eliminar(&mut self, nombre: &str);
-        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta>;
+        fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta>;
         fn buscar(&self, busqueda: &str) -> Vec<String>;
         fn listar(&self) -> Vec<String>;
     }
@@ -704,7 +742,7 @@ pub mod repositorio {
             resultado
         }
 
-        fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
+        fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta> {
             match self.libro.get(busqueda) {
                 Some(receta) => Ok(&receta),
                 None => Err(AppError::DatoInvalido(format!(
@@ -974,7 +1012,7 @@ pub mod servicio {
             return false;
         }
 
-        pub fn obtener(&mut self, busqueda: &str) -> AppResult<&negocio::Receta> {
+        pub fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta> {
             if self.existe(busqueda) {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(receta) => Ok(receta),
@@ -1001,6 +1039,33 @@ pub mod servicio {
         }
         pub fn mostrar_todos(&self) -> Vec<String> {
             return self.repositorio.listar();
+        }
+
+        pub fn mostrar_receta(
+            &self,
+            busqueda: &String,
+        ) -> AppResult<(String, Vec<(String, f64)>, f64)> {
+            if self.existe(busqueda) {
+                return match self.obtener(busqueda) {
+                    Ok(receta) => {
+                        let conjunto = (
+                            receta.nombre().clone(),
+                            receta.ingredientes(),
+                            receta.costo(),
+                        );
+                        return Ok(conjunto);
+                    }
+                    Err(e) => Err(AppError::ErrorPersonal(format!(
+                        "Error al obtener la receta: {}. \nError: {}",
+                        busqueda, e
+                    ))),
+                };
+            } else {
+                return Err(AppError::DatoInvalido(format!(
+                    "no se encontro el insumo: {}",
+                    busqueda
+                )));
+            }
         }
     }
 }
