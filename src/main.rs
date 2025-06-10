@@ -6,6 +6,7 @@
 //      }
 
 use auxiliares::{no_es_cero, solicitar_texto};
+use loops::reintentar;
 
 fn main() {
     use crate::auxiliares;
@@ -226,6 +227,24 @@ fn main() {
                     }
                 }
             },
+            10 => loop {
+                if loops::ui_eliminar_insumo(&mut servicio_de_almacen) {
+                    break;
+                }
+                if loops::reintentar() {
+                    continue;
+                }
+                break;
+            },
+            11 => loop {
+                if loops::ui_eliminar_receta(&mut servicio_de_recetas) {
+                    break;
+                }
+                if reintentar() {
+                    continue;
+                }
+                break;
+            },
             _ => break,
         }
     }
@@ -235,6 +254,8 @@ pub mod loops {
     //1
 
     use crate::auxiliares;
+    use crate::auxiliares::no_es_cero;
+    use crate::auxiliares::solicitar_texto;
     use crate::negocio::*;
     use crate::repositorio;
     use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
@@ -255,17 +276,32 @@ pub mod loops {
                  \n6) Ver todos los insumos.
                  \n7) Ver todas las recetas.
                  \n8) Ver el valor de un Insumo.
-                 \n9) Ver el valor de una Receta"
+                 \n9) Ver el valor de una Receta.
+                 \n10) Eliminar Insumo.
+                 \n11) Eliminar Receta."
             );
             let res = auxiliares::no_es_cero();
-            if res > 9 {
+            if res > 11 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
             return res;
         }
     }
-
+    pub fn reintentar() -> bool {
+        println!("¿Deseas volver a intentar? \n1) Si. \n2) No, volver al menú.");
+        loop {
+            let res = no_es_cero();
+            match res {
+                1 => return true,
+                2 => return false,
+                _ => {
+                    println!("por favor responde 1: para salir o 2: para volver a intentar. ");
+                    continue;
+                }
+            }
+        }
+    }
     pub fn describir_insumo() -> (String, u32, u32, u32) {
         println!("Hola! que nombre quieres para tu insumo?:");
         let nombre = auxiliares::solicitar_texto();
@@ -307,6 +343,43 @@ pub mod loops {
         }
 
         return (nombre, ingredientes);
+    }
+
+    pub fn ui_eliminar_receta(libro: &mut ServicioDeRecetas) -> bool {
+        println!("que receta quieres eliminar?");
+        let receta = solicitar_texto();
+        if !libro.existe(&receta) {
+            println!("No existe la receta: {}, en el libro", receta);
+            return false;
+        }
+        match eliminar_receta(libro, &receta) {
+            Ok(i) => {
+                println!("{}", i);
+                return true;
+            }
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        }
+    }
+    pub fn ui_eliminar_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
+        println!("Que insumo quieres eliminar?");
+        let insumo = solicitar_texto();
+        if !almacen.existe(&insumo) {
+            println!("No existe el insumo: {}, en el almacen.", insumo);
+            return false;
+        }
+        match eliminar_insumo(almacen, &insumo) {
+            Ok(i) => {
+                println!("{}", i);
+                return true;
+            }
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        }
     }
 
     //   FUNCIONES DE CLI
@@ -357,6 +430,55 @@ pub mod loops {
         busqueda: &String,
     ) -> AppResult<(String, u32, u32, u32)> {
         almacen.mostrar_insumo(busqueda)
+    }
+
+    pub fn mostrar_receta(
+        libro: &ServicioDeRecetas,
+        busqueda: &String,
+    ) -> AppResult<(String, Vec<(String, f64)>, f64)> {
+        libro.mostrar_receta(busqueda)
+    }
+    pub fn eliminar_receta(libro: &mut ServicioDeRecetas, busqueda: &String) -> AppResult<String> {
+        match libro.eliminar(busqueda) {
+            Ok(_) => {
+                return Ok(format!(
+                    "Se ha eliminado la receta: {}, del libro.",
+                    busqueda
+                ));
+            }
+            Err(e) => {
+                return Err(AppError::ErrorPersonal(format!(
+                    "Error al eliminar la receta: {}. \nError: {}",
+                    busqueda, e
+                )));
+            }
+        }
+    }
+
+    pub fn eliminar_insumo(
+        almacen: &mut ServicioDeAlmacen,
+        busqueda: &String,
+    ) -> AppResult<String> {
+        if !almacen.existe(busqueda) {
+            return Err(AppError::DatoInvalido(format!(
+                "No se encontro el insumo: {}, en el almacen.",
+                busqueda
+            )));
+        }
+        match almacen.eliminar(busqueda) {
+            Ok(_) => {
+                return Ok(format!(
+                    "Se ha eliminado la receta: {}, del libro.",
+                    busqueda
+                ));
+            }
+            Err(e) => {
+                return Err(AppError::ErrorPersonal(format!(
+                    "Hubo un error al eliminar el insumo: {}. \nError: {}",
+                    busqueda, e
+                )));
+            }
+        }
     }
 } //1
 
