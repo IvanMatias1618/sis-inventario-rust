@@ -2,11 +2,12 @@
 //      SIGUIENTES TAREAS ANTES DE INICIAR EL MODULO DE LOOPS:
 // //
 //      ) refinar pequeños ajustes varios: {
-//
+//           AL EDITAR INSUMO HAY QUE ASEGURAR QUE SI EL NOMBRE CAMBIA
+//           TAMBIEN DEBE CAMBIAR SU CLAVE
 //      }
 
 use auxiliares::{no_es_cero, solicitar_texto};
-use loops::reintentar;
+use loops::{reintentar, ui_editar_insumo};
 
 fn main() {
     use crate::auxiliares;
@@ -254,6 +255,15 @@ fn main() {
                 }
                 break;
             },
+            13 => loop {
+                if loops::ui_editar_insumo(&mut servicio_de_almacen) {
+                    break;
+                }
+                if reintentar() {
+                    continue;
+                }
+                break;
+            },
             _ => loop {
                 println!("No soy un chihuahua ! \n si soy un chihuahua");
             },
@@ -279,18 +289,14 @@ pub mod loops {
         loop {
             println!(
                 "Elije una opcion:
-                 \n1) Salir del programa.
-                 \n2) Crear Un Insumo.
-                 \n3) Crear una Receta.
-                 \n4) Buscar un insumo.
-                 \n5) Buscar una receta.
-                 \n6) Ver todos los insumos.
-                 \n7) Ver todas las recetas.
-                 \n8) Ver el valor de un Insumo.
-                 \n9) Ver el valor de una Receta.
-                 \n10) Eliminar Insumo.
-                 \n11) Eliminar Receta.
-                 \n12) Producir Receta."
+                 \n                1) Salir del programa.
+                 \n2) Crear Un Insumo.                3) Crear una Receta.
+                 \n4) Buscar un insumo.               5) Buscar una receta.
+                 \n6) Ver todos los insumos.          7) Ver todas las recetas.
+                 \n8) Ver el valor de un Insumo.      9) Ver el valor de una Receta.
+                 \n10) Eliminar Insumo.              11) Eliminar Receta.
+                 \n              12) Producir Receta.
+                 \n              13) Editar Insumo."
             );
             let res = auxiliares::no_es_cero();
             if res > 30 {
@@ -427,6 +433,74 @@ pub mod loops {
         }
     }
 
+    pub fn ui_editar_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
+        println!("Que insumo quieres editar?");
+        let res = solicitar_texto();
+        if !almacen.existe(&res) {
+            println!("no existe el insumo: {}", res);
+            return false;
+        }
+        println!("Quieres editar el nombre? \n1) Si. \n2) No.");
+        let mut respuesta = no_es_cero();
+        let mut nombre: Option<String>;
+        match respuesta {
+            1 => {
+                println!("Que nombre quieres?");
+                let nom = solicitar_texto();
+                if almacen.existe(&nom) {
+                    println!("Ya hay un insumo con ese nombre.");
+                    return false;
+                }
+                nombre = Some(nom);
+            }
+            _ => nombre = None,
+        }
+        let mut cantidad: Option<u32>;
+        println!("Quieres editar la cantidad? \n1) Si. \n2) No.");
+        respuesta = no_es_cero();
+        match respuesta {
+            1 => {
+                println!("Cual es la nueva cantidad?");
+                let cant = no_es_cero();
+                cantidad = Some(cant);
+            }
+            _ => cantidad = None,
+        }
+        let mut cantidad_minima: Option<u32>;
+        println!("Deseas editar la cantidad minima? \n1) Si. \n2) No.");
+        respuesta = no_es_cero();
+        match respuesta {
+            1 => {
+                println!("Cual es la nueva cantidad minima?");
+                let cant = no_es_cero();
+                cantidad_minima = Some(cant);
+            }
+            _ => cantidad_minima = None,
+        }
+        let mut precio: Option<u32>;
+        println!("Deseas editar el precio? \n1) Si. \n2) No.");
+        respuesta = no_es_cero();
+        match respuesta {
+            1 => {
+                println!("Cual es el nuevo precio?");
+                let cant = no_es_cero();
+                precio = Some(cant);
+            }
+            _ => precio = None,
+        }
+
+        match editar_insumo(almacen, &res, nombre, cantidad, cantidad_minima, precio) {
+            Ok(_) => {
+                println!("se ha editado el insumo: {} correctamente.", res);
+                return true;
+            }
+            Err(e) => {
+                println!("Error:{}, al editar el insumo: {}", e, res);
+                return false;
+            }
+        }
+    }
+
     //   FUNCIONES DE CLI
     //
     pub fn crear_insumo(
@@ -538,6 +612,22 @@ pub mod loops {
                     busqueda, e
                 )));
             }
+        }
+    }
+    pub fn editar_insumo(
+        almacen: &mut ServicioDeAlmacen,
+        insumo: &String,
+        nombre: Option<String>,
+        cantidad: Option<u32>,
+        cantidad_minima: Option<u32>,
+        costo: Option<u32>,
+    ) -> AppResult<()> {
+        match almacen.editar_insumo(insumo, nombre, cantidad, cantidad_minima, costo) {
+            Ok(_) => return Ok(()),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "Error: {}. \nAl editar el insumo: {}",
+                e, insumo
+            ))),
         }
     }
 } //1
@@ -696,6 +786,47 @@ pub mod negocio {
         pub fn obtener_id(&self) -> &String {
             &self.id
         }
+
+        pub fn actualizar_nombre(&mut self, nombre: &String) -> AppResult<()> {
+            if nombre.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "El nuevo nombre esta vacio.".to_string(),
+                ));
+            }
+            self.nombre = nombre.clone();
+            Ok(())
+        }
+
+        pub fn actualizar_cantidad(&mut self, cantidad: u32) -> AppResult<()> {
+            if cantidad == 0 {
+                return Err(AppError::DatoInvalido(
+                    "La cantidad a añadir es 0.".to_string(),
+                ));
+            }
+            self.cantidad = cantidad;
+            Ok(())
+        }
+
+        pub fn actualizar_cantidad_minima(&mut self, cantidad_minima: u32) -> AppResult<()> {
+            if cantidad_minima == 0 {
+                return Err(AppError::DatoInvalido(
+                    "La cantidad minima no puede ser 0.".to_string(),
+                ));
+            }
+            self.cantidad_minima = cantidad_minima;
+            Ok(())
+        }
+
+        pub fn actualizar_precio(&mut self, precio: u32) -> AppResult<()> {
+            if precio == 0 {
+                return Err(AppError::DatoInvalido(
+                    "El precio no puede ser 0.".to_string(),
+                ));
+            }
+            self.precio = precio;
+            Ok(())
+        }
+
         pub fn obtener_cantidad(&self) -> u32 {
             self.cantidad
         }
@@ -1193,6 +1324,83 @@ pub mod servicio {
                     "no se encontro el insumo: {}",
                     busqueda
                 )));
+            }
+        }
+        pub fn editar_insumo(
+            &mut self,
+            insumo: &String,
+            nombre: Option<String>,
+            cantidad: Option<u32>,
+            cantidad_minima: Option<u32>,
+            precio: Option<u32>,
+        ) -> AppResult<()> {
+            if !self.existe(insumo) {
+                return Err(AppError::DatoInvalido(format!(
+                    "El insumo: {}, no esta en el almacen.",
+                    insumo
+                )));
+            }
+            match self.obtener_mutable(insumo) {
+                Ok(mut n_insumo) => {
+                    match nombre {
+                        Some(nombre) => match n_insumo.actualizar_nombre(&nombre) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                return Err(AppError::ErrorPersonal(format!(
+                                    "Error: {}. \nAl editar el insumo:",
+                                    insumo
+                                )));
+                            }
+                        },
+                        None => (),
+                    }
+
+                    match cantidad {
+                        Some(cantidad) => match n_insumo.actualizar_cantidad(cantidad) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                return Err(AppError::ErrorPersonal(format!(
+                                    "Error: {}, al actualizar la cantidad de: {}",
+                                    e, insumo
+                                )));
+                            }
+                        },
+                        None => (),
+                    }
+                    match cantidad_minima {
+                        Some(cantidad_minima) => {
+                            match n_insumo.actualizar_cantidad_minima(cantidad_minima) {
+                                Ok(_) => (),
+                                Err(e) => {
+                                    return Err(AppError::ErrorPersonal(format!(
+                                        "Error: {}, \nAl actualizar la cantidad minima de: {}",
+                                        e, insumo
+                                    )));
+                                }
+                            }
+                        }
+                        None => (),
+                    }
+                    match precio {
+                        Some(precio) => match n_insumo.actualizar_precio(precio) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                return Err(AppError::ErrorPersonal(format!(
+                                    "Error: {}\nAl actualizar el precio de: {}",
+                                    e, insumo
+                                )));
+                            }
+                        },
+                        None => (),
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    return Err(AppError::ErrorPersonal(format!(
+                        "Error: {}, \nAl obtener el insumo: {}",
+                        e, insumo
+                    )));
+                }
             }
         }
     }
