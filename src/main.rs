@@ -170,15 +170,62 @@ fn main() {
                         let res = no_es_cero();
                         match res {
                             1 => continue,
-                            2 => break,
-                            _ => continue,
+                            _ => break,
                         }
                     }
                 }
             },
-            9 => {
-                println!()
-            }
+            9 => loop {
+                println!("Que receta quieres buscar?");
+                let busqueda = solicitar_texto();
+                if !servicio_de_recetas.existe(&busqueda) {
+                    println!(
+                        "no se encontro la receta: {}. \nBuscando similitudes...",
+                        &busqueda
+                    );
+                    let resultados = servicio_de_recetas.buscar(&busqueda);
+                    if resultados.is_empty() {
+                        println!(
+                            "No se encontraron resultados. \nDesear buscar otra receta? \n1) Si. \n2) No. volver al menú."
+                        );
+                        let res = no_es_cero();
+                        match res {
+                            1 => continue,
+                            _ => break,
+                        }
+                    } else {
+                        for resultado in resultados {
+                            println!("{}", resultado);
+                        }
+                        break;
+                    }
+                } else {
+                    match servicio_de_recetas.mostrar_receta(&busqueda) {
+                        Ok(receta) => {
+                            println!(
+                                "Se encontro la receta: {}. \nNombre: {}. \nCosto: {}",
+                                busqueda, receta.0, receta.2
+                            );
+                            for (insumo, cantidad) in receta.1 {
+                                println!("Insumo: {}, Cantidad: {}", insumo, cantidad);
+                            }
+                            break;
+                        }
+                        Err(e) => {
+                            println!(
+                                "hubo un error al obtener la receta: {}. \nError: {}",
+                                busqueda, e
+                            );
+                            println!("Deseas volver a intentar? \n1) Si. \n2) No.");
+                            let res = no_es_cero();
+                            match res {
+                                1 => continue,
+                                _ => break,
+                            }
+                        }
+                    }
+                }
+            },
             _ => break,
         }
     }
