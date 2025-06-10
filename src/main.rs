@@ -1,13 +1,14 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
 //      SIGUIENTES TAREAS ANTES DE INICIAR EL MODULO DE LOOPS:
-//      1) mover AppResult y AppError a la capa negocio.
-//      2) eliminar capa de servicio.
-//      3) refinar pequeños ajustes varios: {
+// //
+//      ) refinar pequeños ajustes varios: {
 //
 //      }
 
+use auxiliares::solicitar_texto;
+
 fn main() {
-    use crate::negocio;
+    use crate::auxiliares;
     use crate::repositorio;
     use crate::servicio;
 
@@ -70,12 +71,33 @@ fn main() {
                 }
             },
             4 => {
-                println!("que insumo quieres busar?");
+                println!("Que insumo gustas buscar?");
                 let busqueda = auxiliares::solicitar_texto();
-                let resultados = servicio_de_almacen.buscar(&busqueda);
-                println!("resultados de la busqueda: {}", busqueda);
-                for nombre in resultados {
-                    println!("{}", nombre)
+                let resultados = loops::buscar_insumo(&servicio_de_almacen, &busqueda);
+                if resultados.is_empty() {
+                    println!(
+                        "el insumo: {}, no se ha encontrado en el sistema.",
+                        busqueda
+                    );
+                } else {
+                    for resultado in resultados {
+                        println!("{}", resultado);
+                    }
+                }
+            }
+            5 => {
+                println!("Que receta quieres buscar?");
+                let busqueda = solicitar_texto();
+                let resultados = loops::buscar_receta(&servicio_de_recetas, &busqueda);
+                if resultados.is_empty() {
+                    println!(
+                        "la receta: {}, no se ha encontrado en el sistema.",
+                        busqueda
+                    );
+                } else {
+                    for resultado in resultados {
+                        println!("{}", resultado);
+                    }
                 }
             }
             _ => break,
@@ -86,11 +108,10 @@ fn main() {
 pub mod loops {
     //1
 
-    use crate::auxiliares::{self, AppError, AppResult};
-    use crate::negocio;
+    use crate::auxiliares;
+    use crate::negocio::*;
     use crate::repositorio;
-    use crate::servicio;
-    use crate::servicio::ServicioDeAlmacen;
+    use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
     use std::io;
 
     // Dado que estamos en una cli, estaran separadas las funciones de ui, y las de cli.
@@ -103,10 +124,11 @@ pub mod loops {
                  \n1) Salir del programa.
                  \n2) Crear Un Insumo.
                  \n3) Crear una Receta.
-                 \n4) Buscar un insumo"
+                 \n4) Buscar un insumo.
+                 \n5) Buscar una receta."
             );
             let res = auxiliares::no_es_cero();
-            if res > 4 {
+            if res > 5 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
@@ -175,7 +197,7 @@ pub mod loops {
     pub fn crear_receta(
         receta: (String, Vec<(String, f64)>),
         almacen: &ServicioDeAlmacen,
-        libro: &mut servicio::ServicioDeRecetas,
+        libro: &mut ServicioDeRecetas,
     ) -> AppResult<String> {
         return match libro.añadir(receta.0.clone(), receta.1, almacen) {
             Ok(_) => Ok(format!("se ha creado la receta: {}", receta.0)),
@@ -184,6 +206,14 @@ pub mod loops {
                 receta.0, e
             ))),
         };
+    }
+
+    pub fn buscar_insumo(almacen: &ServicioDeAlmacen, busqueda: &String) -> Vec<String> {
+        return almacen.buscar(busqueda);
+    }
+
+    pub fn buscar_receta(libro: &ServicioDeRecetas, busqueda: &String) -> Vec<String> {
+        return libro.buscar(busqueda);
     }
 } //1
 
@@ -236,19 +266,6 @@ pub mod auxiliares {
             }
         }
     }
-
-    use thiserror::Error;
-
-    #[derive(Debug, Error)]
-    pub enum AppError {
-        // empezamos escribiendo los tipos de errores que tendremos en la app.
-        #[error("Error Personal: {0}")]
-        ErrorPersonal(String),
-        #[error("Dato Invalido: {0}")]
-        DatoInvalido(String),
-    }
-
-    pub type AppResult<T> = Result<T, AppError>;
 }
 
 pub mod negocio {
@@ -264,11 +281,25 @@ pub mod negocio {
     //pensemos en como vamos a lidiar con los errores de validacion, podriamos llamar al validador
     //antes que crear la instancia. o devolver AppError para casi todo :u
     //
-    use crate::auxiliares::{AppError, AppResult};
+
     use chrono::{DateTime, TimeZone};
     use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
+
+    use thiserror::Error;
+
+    #[derive(Debug, Error)]
+    pub enum AppError {
+        // empezamos escribiendo los tipos de errores que tendremos en la app.
+        #[error("Error Personal: {0}")]
+        ErrorPersonal(String),
+        #[error("Dato Invalido: {0}")]
+        DatoInvalido(String),
+    }
+
+    pub type AppResult<T> = Result<T, AppError>;
+
     //Estructuras de datos que se usaran en Virtualizacion.
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Insumo {
@@ -440,8 +471,7 @@ pub mod negocio {
 }
 
 pub mod repositorio {
-    use crate::auxiliares::{AppError, AppResult};
-    use crate::negocio::{self, Insumo};
+    use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
     use std::collections::HashMap;
     use strsim::levenshtein;
 
@@ -639,8 +669,7 @@ pub mod repositorio {
 }
 pub mod servicio {
 
-    use crate::auxiliares::{AppError, AppResult};
-    use crate::negocio::{self, Receta};
+    use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
     use crate::repositorio::{Bodega, RecetasEnMemoria};
     use strsim::levenshtein;
 
