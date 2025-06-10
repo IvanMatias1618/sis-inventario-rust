@@ -122,6 +122,28 @@ fn main() {
                     }
                 }
             }
+            8 => {
+                println!("Que insumo quieres buscar?");
+                let busqueda = solicitar_texto();
+                match servicio_de_almacen.mostrar_insumo(&busqueda) {
+                    Ok(insumo) => {
+                        let conjunto = insumo;
+                        println!(
+                            "insumo: {}, encontrado.
+                            \nNombre: {}.
+                            \nCantidad actual: {}.
+                            \nCantidad minima: {}.
+                            \nPrecio por kilo: {}.",
+                            busqueda, conjunto.0, conjunto.1, conjunto.2, conjunto.3
+                        );
+                    }
+                    Err(e) => println!(
+                        "hubo un error al buscar el insumo: {}, \nError: {}",
+                        busqueda, e
+                    ),
+                }
+            }
+            9 => continue,
             _ => break,
         }
     }
@@ -246,6 +268,13 @@ pub mod loops {
     }
     pub fn ver_todos_las_recetas(libro: &ServicioDeRecetas) -> Vec<String> {
         return libro.mostrar_todos();
+    }
+
+    pub fn mostrar_insumo(
+        almacen: &ServicioDeAlmacen,
+        busqueda: &String,
+    ) -> AppResult<(String, u32, u32, u32)> {
+        almacen.mostrar_insumo(busqueda)
     }
 } //1
 
@@ -410,6 +439,14 @@ pub mod negocio {
         pub fn obtener_cantidad(&self) -> u32 {
             self.cantidad
         }
+
+        pub fn obtener_cantidad_minima(&self) -> u32 {
+            self.cantidad_minima
+        }
+        pub fn obtener_precio(&self) -> u32 {
+            self.precio
+        }
+
         pub fn obtener_costo_por_gramo(&self) -> f64 {
             self.precio as f64 / 1000.00
         }
@@ -813,6 +850,32 @@ pub mod servicio {
 
         pub fn mostrar_todos(&self) -> Vec<String> {
             return self.repositorio.mostrar_todos();
+        }
+
+        pub fn mostrar_insumo(&self, busqueda: &String) -> AppResult<(String, u32, u32, u32)> {
+            if self.existe(busqueda) {
+                return match self.obtener(busqueda) {
+                    Ok(res) => {
+                        let insumo = res;
+                        let conjunto = (
+                            insumo.nombre().clone(),
+                            insumo.obtener_cantidad(),
+                            insumo.obtener_cantidad_minima(),
+                            insumo.obtener_precio(),
+                        );
+                        return Ok(conjunto);
+                    }
+                    Err(e) => Err(AppError::ErrorPersonal(format!(
+                        "Error al obtener el insumo: {} \nError: {}",
+                        busqueda, e
+                    ))),
+                };
+            } else {
+                return Err(AppError::DatoInvalido(format!(
+                    "no se encontro el insumo: {}",
+                    busqueda
+                )));
+            }
         }
     }
 
