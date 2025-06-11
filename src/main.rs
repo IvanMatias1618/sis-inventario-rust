@@ -4,10 +4,11 @@
 //      ) refinar pequeños ajustes varios: {
 //           AL EDITAR INSUMO HAY QUE ASEGURAR QUE SI EL NOMBRE CAMBIA
 //           TAMBIEN DEBE CAMBIAR SU CLAVE
+//
 //      }
 
 use auxiliares::{no_es_cero, solicitar_texto};
-use loops::{reintentar, ui_editar_insumo};
+use loops::{reintentar, ui_buscar_insumo, ui_editar_insumo};
 
 fn main() {
     use crate::auxiliares;
@@ -32,201 +33,60 @@ fn main() {
         match res {
             1 => break,
             2 => loop {
-                let insumo = loops::describir_insumo();
-                match loops::crear_insumo(insumo, &mut servicio_de_almacen) {
-                    Ok(respuesta) => {
-                        println!("{}", respuesta);
-                        break;
-                    }
-                    Err(e) => {
-                        println!(
-                            "error al crear el insumo: {}, deseas volver a intentar?
-                            \n 1) volver a intentar  \n2)Volver al menu principal",
-                            e
-                        );
-                        let respuesta = auxiliares::no_es_cero();
-                        match respuesta {
-                            1 => break,
-                            2 => continue,
-                            _ => continue,
-                        }
-                    }
+                if loops::ui_crear_insumo(&mut servicio_de_almacen) {
+                    break;
                 }
+                if reintentar() {
+                    continue;
+                }
+                break;
             },
             3 => loop {
-                let receta = loops::describir_receta(&servicio_de_almacen);
-                match loops::crear_receta(receta, &servicio_de_almacen, &mut servicio_de_recetas) {
-                    Ok(info) => {
-                        println!("{}", info);
-                        break;
-                    }
-                    Err(e) => {
-                        println!(" {}", e);
-                        println!("Deseas volver a intentarlo? \n 1) si. \n 2) no, volver al menu.");
-                        let res = auxiliares::no_es_cero();
-                        match res {
-                            1 => continue,
-                            2 => break,
-                            _ => break,
-                        }
-                    }
+                if loops::ui_crear_receta(&mut servicio_de_recetas, &servicio_de_almacen) {
+                    break;
                 }
+                if reintentar() {
+                    continue;
+                }
+                break;
             },
-            4 => {
-                println!("Que insumo gustas buscar?");
-                let busqueda = auxiliares::solicitar_texto();
-                let resultados = loops::buscar_insumo(&servicio_de_almacen, &busqueda);
-                if resultados.is_empty() {
-                    println!(
-                        "el insumo: {}, no se ha encontrado en el sistema.",
-                        busqueda
-                    );
-                } else {
-                    for resultado in resultados {
-                        println!("{}", resultado);
-                    }
+            4 => loop {
+                if loops::ui_buscar_insumo(&servicio_de_almacen) {
+                    break;
                 }
-            }
-            5 => {
-                println!("Que receta quieres buscar?");
-                let busqueda = solicitar_texto();
-                let resultados = loops::buscar_receta(&servicio_de_recetas, &busqueda);
-                if resultados.is_empty() {
-                    println!(
-                        "la receta: {}, no se ha encontrado en el sistema.",
-                        busqueda
-                    );
-                } else {
-                    for resultado in resultados {
-                        println!("{}", resultado);
-                    }
+                if reintentar() {
+                    continue;
                 }
-            }
-            6 => {
-                println!("Buscando recetas...");
-                let resultados = servicio_de_almacen.mostrar_todos();
-                if resultados.is_empty() {
-                    println!("no hay insumos en el almacen.");
-                } else {
-                    for resultado in resultados {
-                        println!("{}", resultado);
-                    }
+                break;
+            },
+            5 => loop {
+                if loops::ui_buscar_receta(&servicio_de_recetas) {
+                    break;
                 }
-            }
-            7 => {
-                println!("Buscando recetas...");
-                let resultados = servicio_de_recetas.mostrar_todos();
-                if resultados.is_empty() {
-                    println!("el libro de recetas esta vacio")
-                } else {
-                    for resultado in resultados {
-                        println!("{}", resultado);
-                    }
+                if reintentar() {
+                    continue;
                 }
-            }
+                break;
+            },
+            6 => loops::ver_insumos(&servicio_de_almacen),
+            7 => loops::ver_recetas(&servicio_de_recetas),
             8 => loop {
-                println!("Que insumo quieres buscar?");
-                let busqueda = solicitar_texto();
-                if !servicio_de_almacen.existe(&busqueda) {
-                    println!(
-                        "No se encontro el insumo: {}. \nBuscando coincidencias...",
-                        &busqueda
-                    );
-                    let resultados = servicio_de_almacen.buscar(&busqueda);
-                    if resultados.is_empty() {
-                        println!(
-                            "No se encontraron coincidencias. \n Desear reintentar? \n1) Si. \n2) No."
-                        );
-                        let respuesta = no_es_cero();
-                        match respuesta {
-                            1 => break,
-                            2 => continue,
-                            _ => continue,
-                        }
-                    } else {
-                        for resultado in resultados {
-                            println!("{}", resultado);
-                            continue;
-                        }
-                    }
+                if loops::ui_insumo_valor(&servicio_de_almacen) {
+                    break;
                 }
-                match servicio_de_almacen.mostrar_insumo(&busqueda) {
-                    Ok(insumo) => {
-                        let conjunto = insumo;
-                        println!(
-                            "insumo: {}, encontrado.
-                            \nNombre: {}.
-                            \nCantidad actual: {}.
-                            \nCantidad minima: {}.
-                            \nPrecio por kilo: {}.",
-                            busqueda, conjunto.0, conjunto.1, conjunto.2, conjunto.3
-                        );
-                        break;
-                    }
-                    Err(e) => {
-                        println!(
-                            "hubo un error al buscar el insumo: {}, \nError: {}",
-                            busqueda, e
-                        );
-                        println!("Deseas reintentar? \n1) Si. \n2) No, salir al menú.");
-                        let res = no_es_cero();
-                        match res {
-                            1 => continue,
-                            _ => break,
-                        }
-                    }
+                if reintentar() {
+                    continue;
                 }
+                break;
             },
             9 => loop {
-                println!("Que receta quieres buscar?");
-                let busqueda = solicitar_texto();
-                if !servicio_de_recetas.existe(&busqueda) {
-                    println!(
-                        "no se encontro la receta: {}. \nBuscando similitudes...",
-                        &busqueda
-                    );
-                    let resultados = servicio_de_recetas.buscar(&busqueda);
-                    if resultados.is_empty() {
-                        println!(
-                            "No se encontraron resultados. \nDesear buscar otra receta? \n1) Si. \n2) No. volver al menú."
-                        );
-                        let res = no_es_cero();
-                        match res {
-                            1 => continue,
-                            _ => break,
-                        }
-                    } else {
-                        for resultado in resultados {
-                            println!("{}", resultado);
-                        }
-                        break;
-                    }
-                } else {
-                    match servicio_de_recetas.mostrar_receta(&busqueda) {
-                        Ok(receta) => {
-                            println!(
-                                "Se encontro la receta: {}. \nNombre: {}. \nCosto: {}",
-                                busqueda, receta.0, receta.2
-                            );
-                            for (insumo, cantidad) in receta.1 {
-                                println!("Insumo: {}, Cantidad: {}", insumo, cantidad);
-                            }
-                            break;
-                        }
-                        Err(e) => {
-                            println!(
-                                "hubo un error al obtener la receta: {}. \nError: {}",
-                                busqueda, e
-                            );
-                            println!("Deseas volver a intentar? \n1) Si. \n2) No.");
-                            let res = no_es_cero();
-                            match res {
-                                1 => continue,
-                                _ => break,
-                            }
-                        }
-                    }
+                if loops::ui_receta_valor(&servicio_de_recetas) {
+                    break;
                 }
+                if reintentar() {
+                    continue;
+                }
+                break;
             },
             10 => loop {
                 if loops::ui_eliminar_insumo(&mut servicio_de_almacen) {
@@ -320,6 +180,20 @@ pub mod loops {
             }
         }
     }
+
+    pub fn ui_crear_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
+        let insumo = describir_insumo();
+        match crear_insumo(insumo, almacen) {
+            Ok(respuesta) => {
+                println!("{}", respuesta);
+                return true;
+            }
+            Err(e) => {
+                println!("Error: {}\nAl crear el insumo.", e);
+                return false;
+            }
+        }
+    }
     pub fn describir_insumo() -> (String, u32, u32, u32) {
         println!("Hola! que nombre quieres para tu insumo?:");
         let nombre = auxiliares::solicitar_texto();
@@ -334,6 +208,71 @@ pub mod loops {
         let cantidad_minima = auxiliares::no_es_cero();
         return (nombre, cantidad, cantidad_minima, costo);
     }
+
+    pub fn ui_buscar_insumo(almacen: &ServicioDeAlmacen) -> bool {
+        println!("Que insumo gustas buscar?");
+        let busqueda = solicitar_texto();
+        let resultados = buscar_insumo(almacen, &busqueda);
+        if resultados.is_empty() {
+            println!("El insumo: {}, no se ha encontrado.", busqueda);
+            return false;
+        }
+        println!("Resultados: ");
+        for resultado in resultados {
+            println!("{}", resultado);
+        }
+        return true;
+    }
+
+    pub fn ver_insumos(almacen: &ServicioDeAlmacen) {
+        println!("Buscando insumos. .. . ... .. .");
+        let resultados = ver_todos_los_insumos(almacen);
+        if resultados.is_empty() {
+            println!("No hay insumos en el almacen.");
+        } else {
+            for resultado in resultados {
+                println!("{}", resultado);
+            }
+        }
+    }
+
+    pub fn ui_insumo_valor(almacen: &ServicioDeAlmacen) -> bool {
+        println!("Que insumo buscas?");
+        let busqueda = solicitar_texto();
+        if !almacen.existe(&busqueda) {
+            println!(
+                "No se encontró el insumo: {}. \n Buscando coincidencias...",
+                &busqueda
+            );
+            let resultados = almacen.buscar(&busqueda);
+            if resultados.is_empty() {
+                println!("No se encontraron coincidencias.");
+                return false;
+            }
+            for resultado in resultados {
+                println!("{}", resultado);
+            }
+            return false;
+        }
+        return match almacen.mostrar_insumo(&busqueda) {
+            Ok(insumo) => {
+                println!(
+                    "Insumo: {};\n
+                    Nombre: {}.\n
+                    Cantidad actual: {}.\n
+                    Cantidad minima: {}. \n
+                    Precio por kilo: {}.",
+                    &busqueda, insumo.0, insumo.1, insumo.2, insumo.3
+                );
+                true
+            }
+            Err(e) => {
+                println!("Error: {}.\nal buscar el insumo: {}", e, busqueda);
+                false
+            }
+        };
+    }
+
     pub fn describir_receta(almacen: &ServicioDeAlmacen) -> (String, Vec<(String, u32)>) {
         println!("Como quieres que se llame la receta?");
         let nombre = auxiliares::solicitar_texto();
@@ -360,6 +299,82 @@ pub mod loops {
         }
 
         return (nombre, ingredientes);
+    }
+
+    pub fn ui_crear_receta(libro: &mut ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
+        let receta = describir_receta(almacen);
+        return match crear_receta(receta, almacen, libro) {
+            Ok(info) => {
+                println!("{}", info);
+                true
+            }
+            Err(e) => {
+                println!("{}", e);
+                false
+            }
+        };
+    }
+
+    pub fn ui_buscar_receta(libro: &ServicioDeRecetas) -> bool {
+        println!("Que receta quieres buscar?");
+        let busqueda = &solicitar_texto();
+        let resultados = buscar_receta(libro, busqueda);
+        if resultados.is_empty() {
+            println!("No se encontraron coincidencias.");
+            return false;
+        }
+        println!("Imprimiendo resultados...:");
+        for resultado in resultados {
+            println!("{}", resultado);
+        }
+        return true;
+    }
+
+    pub fn ver_recetas(libro: &ServicioDeRecetas) {
+        println!("Buscando recetas. .. ... . . . .. .");
+        let resultados = ver_todos_las_recetas(libro);
+        if resultados.is_empty() {
+            println!("El libro de recetas esta vacio.");
+        } else {
+            for resultado in resultados {
+                println!("{}", resultado);
+            }
+        }
+    }
+
+    pub fn ui_receta_valor(libro: &ServicioDeRecetas) -> bool {
+        println!("Que receta gustas buscar?");
+        let busqueda = solicitar_texto();
+        if !libro.existe(&busqueda) {
+            println!(
+                "No se han encontrado la receta: {}.\nBuscando coincidencias...",
+                &busqueda
+            );
+            let resultados = libro.buscar(&busqueda);
+            if resultados.is_empty() {
+                println!("No se encontraron coincidencias.");
+                return false;
+            } else {
+                for resultado in resultados {
+                    println!("{}", resultado);
+                }
+            }
+            return false;
+        }
+        return match libro.mostrar_receta(&busqueda) {
+            Ok(receta) => {
+                println!("Receta: {}\nNombre: {}", busqueda, receta.0);
+                for (insumo, cantidad) in receta.1 {
+                    println!("Insumo: {} \nCantidad: {}", insumo, cantidad);
+                }
+                println!("Costo: {}", receta.2);
+                true
+            }
+            Err(e) => {
+                println!("Error: {}\nAl obtener la receta: {}", e, busqueda);
+                false
+            }
+        };
     }
 
     pub fn ui_eliminar_receta(libro: &mut ServicioDeRecetas) -> bool {
@@ -1340,68 +1355,59 @@ pub mod servicio {
                     insumo
                 )));
             }
-            match self.obtener_mutable(insumo) {
-                Ok(mut n_insumo) => {
-                    match nombre {
-                        Some(nombre) => match n_insumo.actualizar_nombre(&nombre) {
-                            Ok(_) => (),
-                            Err(e) => {
-                                return Err(AppError::ErrorPersonal(format!(
-                                    "Error: {}. \nAl editar el insumo:",
-                                    insumo
-                                )));
-                            }
-                        },
-                        None => (),
-                    }
-
-                    match cantidad {
-                        Some(cantidad) => match n_insumo.actualizar_cantidad(cantidad) {
-                            Ok(_) => (),
-                            Err(e) => {
-                                return Err(AppError::ErrorPersonal(format!(
-                                    "Error: {}, al actualizar la cantidad de: {}",
-                                    e, insumo
-                                )));
-                            }
-                        },
-                        None => (),
-                    }
-                    match cantidad_minima {
-                        Some(cantidad_minima) => {
-                            match n_insumo.actualizar_cantidad_minima(cantidad_minima) {
-                                Ok(_) => (),
-                                Err(e) => {
-                                    return Err(AppError::ErrorPersonal(format!(
-                                        "Error: {}, \nAl actualizar la cantidad minima de: {}",
-                                        e, insumo
-                                    )));
-                                }
-                            }
-                        }
-                        None => (),
-                    }
-                    match precio {
-                        Some(precio) => match n_insumo.actualizar_precio(precio) {
-                            Ok(_) => (),
-                            Err(e) => {
-                                return Err(AppError::ErrorPersonal(format!(
-                                    "Error: {}\nAl actualizar el precio de: {}",
-                                    e, insumo
-                                )));
-                            }
-                        },
-                        None => (),
-                    }
-                    return Ok(());
-                }
+            let mut insumo_a_editar: negocio::Insumo;
+            match self.obtener(insumo) {
+                Ok(i) => insumo_a_editar = i.clone(),
                 Err(e) => {
                     return Err(AppError::ErrorPersonal(format!(
-                        "Error: {}, \nAl obtener el insumo: {}",
+                        "Error: {}\nAl obtener el insumo: {}",
                         e, insumo
                     )));
                 }
             }
+
+            let mut clave = insumo.clone();
+
+            if let Some(mut nuevo_nombre) = nombre {
+                if nuevo_nombre.is_empty() {
+                    return Err(AppError::DatoInvalido(
+                        "El nuevo nombre esta vacio.".to_string(),
+                    ));
+                }
+                if nuevo_nombre != *insumo && self.existe(&nuevo_nombre) {
+                    return Err(AppError::DatoInvalido(format!(
+                        "Ya existe el insumo: {} ",
+                        nuevo_nombre
+                    )));
+                }
+                if nuevo_nombre != *insumo {
+                    self.repositorio.eliminar(insumo)
+                }
+                insumo_a_editar.actualizar_nombre(&nuevo_nombre);
+                clave = nuevo_nombre;
+            }
+
+            if let Some(cant) = cantidad {
+                match insumo_a_editar.actualizar_cantidad(cant) {
+                    Ok(_) => (),
+                    Err(e) => return Err(e),
+                }
+            }
+            if let Some(cant_mnm) = cantidad_minima {
+                match insumo_a_editar.actualizar_cantidad_minima(cant_mnm) {
+                    Ok(_) => (),
+                    Err(e) => return Err(e),
+                }
+            }
+            if let Some(costo) = precio {
+                match insumo_a_editar.actualizar_precio(costo) {
+                    Ok(_) => (),
+                    Err(e) => return Err(e),
+                }
+            }
+
+            self.repositorio.añadir(&clave, insumo_a_editar);
+            Ok(())
         }
     }
 
@@ -1433,7 +1439,7 @@ pub mod servicio {
                         "el nombre del ingrediente esta vacio".to_string(),
                     ));
                 }
-                if *cantidad <= 0 {
+                if *cantidad == 0 {
                     return Err(AppError::DatoInvalido(
                         "las cantidades no pueden ser menores a 0".to_string(),
                     ));
