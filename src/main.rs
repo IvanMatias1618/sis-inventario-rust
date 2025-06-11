@@ -1,9 +1,7 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
 //      SIGUIENTES TAREAS ANTES DE INICIAR EL MODULO DE LOOPS:
-// //
+// //      FALTA FUNCION DE EDITAR RECETA.
 //      ) refinar pequeños ajustes varios: {
-//           AL EDITAR INSUMO HAY QUE ASEGURAR QUE SI EL NOMBRE CAMBIA
-//           TAMBIEN DEBE CAMBIAR SU CLAVE
 //
 //      }
 
@@ -156,7 +154,7 @@ pub mod loops {
                  \n8) Ver el valor de un Insumo.      9) Ver el valor de una Receta.
                  \n10) Eliminar Insumo.              11) Eliminar Receta.
                  \n              12) Producir Receta.
-                 \n              13) Editar Insumo."
+                 \n13) Editar Insumo.                14) Editar Receta."
             );
             let res = auxiliares::no_es_cero();
             if res > 30 {
