@@ -1,7 +1,11 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
 //
-// //      Trabajando en... FUNCION DE EDITAR RECETA.
+//      PENDIENTES:
+//           fn Usar en ServicioALmacen: guardar los cambios LINEA: 1536
+//      SOLUCIONAR: Al modificar un insumo las recetas se rompen.
+//             CAMBIAR: de busqueda por nombre a uuid.
 //      ) refinar pequeños ajustes varios: {
+//
 //               Agregar "campò vacio a la lista de errores de Aplicacion"
 //      }
 
@@ -13,10 +17,9 @@ fn main() {
     use crate::repositorio;
     use crate::servicio;
 
-    let mut almacen = repositorio::AlmacenEnMemoria::nuevo();
+    let mut almacen = repositorio::AlmacenEnMemoria::nuevo("insumos.db").unwrap();
     let mut recetario = repositorio::RecetarioEnMemoria::nuevo();
 
-    almacen.cargar();
     println!("almacen cargado");
     let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
     let mut servicio_de_recetas = servicio::ServicioDeRecetas::nuevo(Box::new(recetario));
@@ -252,7 +255,7 @@ pub mod loops {
                 "No se encontró el insumo: {}. \n Buscando coincidencias...",
                 &busqueda
             );
-            let resultados = almacen.buscar(&busqueda);
+            let mut resultados = almacen.buscar(&busqueda);
             if resultados.is_empty() {
                 println!("No se encontraron coincidencias.");
                 return false;
@@ -780,14 +783,12 @@ pub mod negocio {
     //antes que crear la instancia. o devolver AppError para casi todo :u
     //
 
-    use std::num::Saturating;
-
     use chrono::{DateTime, TimeZone};
     use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
-    use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
-
+    use rusqlite::Error as SqlError;
     use thiserror::Error;
+    use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
 
     #[derive(Debug, Error)]
     pub enum AppError {
@@ -796,6 +797,10 @@ pub mod negocio {
         ErrorPersonal(String),
         #[error("Dato Invalido: {0}")]
         DatoInvalido(String),
+        #[error("Campo Vacio: {0}")]
+        CampoVacio(String),
+        #[error("Error de Base de datos: {0}")]
+        DbError(#[from] SqlError),
     }
 
     pub type AppResult<T> = Result<T, AppError>;
@@ -804,7 +809,7 @@ pub mod negocio {
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Insumo {
         //Simulacion de un insumo
-        id: String,
+        id: Option<i64>,
         nombre: String,
         cantidad: u32,
         precio: u32,
@@ -848,13 +853,30 @@ pub mod negocio {
             };
 
             Ok(Insumo {
-                id: Uuid::new_v4().to_string(),
+                id: None,
                 nombre,
                 cantidad,
                 precio,
                 cantidad_minima,
             })
         }
+
+        pub fn crear_desde_db(
+            id: i64,
+            nombre: String,
+            cantidad: u32,
+            cantidad_minima: u32,
+            precio: u32,
+        ) -> Result<Self, rusqlite::Error> {
+            Ok(Insumo {
+                id: Some(id),
+                nombre,
+                cantidad,
+                cantidad_minima,
+                precio,
+            })
+        }
+
         pub fn usar(&mut self, cantidad: u32) -> AppResult<()> {
             if cantidad < self.cantidad {
                 self.cantidad -= cantidad;
@@ -868,8 +890,8 @@ pub mod negocio {
         pub fn alerta_cantidad_minima(&self) -> bool {
             self.cantidad <= self.cantidad_minima
         }
-        pub fn obtener_id(&self) -> &String {
-            &self.id
+        pub fn obtener_id(&self) -> Option<i64> {
+            self.id
         }
 
         pub fn actualizar_nombre(&mut self, nombre: &String) -> AppResult<()> {
@@ -1050,150 +1072,140 @@ pub mod negocio {
 
 pub mod repositorio {
     use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
+    use rusqlite::{Connection, Error, params};
     use std::collections::HashMap;
     use strsim::levenshtein;
 
-    pub trait Bodega {
-        fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
-        fn eliminar(&mut self, nombre: &str);
-        fn buscar(&self, busqueda: &str) -> Vec<&String>;
-        fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Insumo>;
-        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo>;
-        fn mostrar_todos(&self) -> Vec<String>; //realmente sera un insumo pero hay que ver como)> ;
-    }
-
-    pub struct AlmacenEnMemoria {
-        bodega: HashMap<String, negocio::Insumo>,
-    }
-
-    impl AlmacenEnMemoria {
-        pub fn nuevo() -> Self {
-            AlmacenEnMemoria {
-                bodega: HashMap::new(),
-            }
-        }
-        pub fn cargar(&mut self) {
-            match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"leche".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-            match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"cafe".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-            match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"chocolate".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-            match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"cocoa".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-
-            match Insumo::nuevo("caramelo".to_string(), 1000, 150, 13) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"caramelo".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-            match Insumo::nuevo("vainilla".to_string(), 1000, 123, 40) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"vainilla", nuevo)
-                }
-                Err(_) => (),
-            }
-
-            match Insumo::nuevo("rompope".to_string(), 120, 100, 30) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"rompope".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-            match Insumo::nuevo("matcha".to_string(), 1000, 123, 40) {
-                Ok(insumo) => {
-                    let mut nuevo = insumo;
-                    self.añadir(&"matcha".to_string(), nuevo)
-                }
-                Err(_) => (),
-            }
-        }
-    }
-    impl Bodega for AlmacenEnMemoria {
-        fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo) {
-            self.bodega.insert(nombre.to_string(), insumo);
-        }
-        fn eliminar(&mut self, nombre: &str) {
-            self.bodega.remove(nombre);
-        }
-        fn buscar(&self, busqueda: &str) -> Vec<&String> {
-            let mut resultados: Vec<&String> = Vec::new();
-            resultados = self
-                .bodega
-                .keys()
-                .filter(|nombre| nombre.contains(busqueda))
-                .collect();
-            let probables = self
-                .bodega
-                .keys()
-                .min_by_key(|insumo| levenshtein(insumo, busqueda));
-            match probables {
-                Some(opcion) => {
-                    resultados.push(opcion);
-                    return resultados;
-                }
-                None => return resultados,
-            }
+    /*
+        pub trait Bodega {
+            fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo);
+            fn eliminar(&mut self, nombre: &str);
+            fn buscar(&self, busqueda: &str) -> Vec<&String>;
+            fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Insumo>;
+            fn mostrar_todos(&self) -> Vec<String>; //realmente sera un insumo pero hay que ver como)> ;
         }
 
-        fn obtener(&self, busqueda: &str) -> AppResult<&Insumo> {
-            match self.bodega.get(busqueda) {
-                Some(insumo) => Ok(&insumo),
-                None => Err(AppError::DatoInvalido(format!(
-                    "el insumo: {}, no existe",
-                    busqueda
-                ))),
-            }
+        pub struct AlmacenEnMemoria {
+            bodega: HashMap<String, negocio::Insumo>,
         }
 
-        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo> {
-            match self.bodega.get_mut(busqueda) {
-                Some(mut insumo) => Ok(insumo),
-                None => Err(AppError::ErrorPersonal(format!(
-                    "Error al encontrar el insumo: {}",
-                    busqueda
-                ))),
+        impl AlmacenEnMemoria {
+            pub fn nuevo() -> Self {
+                AlmacenEnMemoria {
+                    bodega: HashMap::new(),
+                }
+            }
+            pub fn cargar(&mut self) {
+                match Insumo::nuevo("leche".to_string(), 120, 100, 30) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"leche".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+                match Insumo::nuevo("cafe".to_string(), 1000, 123, 40) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"cafe".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+                match Insumo::nuevo("chocolate".to_string(), 120, 100, 30) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"chocolate".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+                match Insumo::nuevo("cocoa".to_string(), 1000, 123, 40) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"cocoa".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+
+                match Insumo::nuevo("caramelo".to_string(), 1000, 150, 13) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"caramelo".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+                match Insumo::nuevo("vainilla".to_string(), 1000, 123, 40) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"vainilla", nuevo)
+                    }
+                    Err(_) => (),
+                }
+
+                match Insumo::nuevo("rompope".to_string(), 120, 100, 30) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"rompope".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
+                match Insumo::nuevo("matcha".to_string(), 1000, 123, 40) {
+                    Ok(insumo) => {
+                        let mut nuevo = insumo;
+                        self.añadir(&"matcha".to_string(), nuevo)
+                    }
+                    Err(_) => (),
+                }
             }
         }
-
-        fn mostrar_todos(&self) -> Vec<String> {
-            let mut resultados: Vec<String> = Vec::new();
-            for (clave, _) in &self.bodega {
-                resultados.push(clave.clone());
+        impl Bodega for AlmacenEnMemoria {
+            fn añadir(&mut self, nombre: &str, insumo: negocio::Insumo) {
+                self.bodega.insert(nombre.to_string(), insumo);
             }
-            return resultados;
-        }
-    }
+            fn eliminar(&mut self, nombre: &str) {
+                self.bodega.remove(nombre);
+            }
+            fn buscar(&self, busqueda: &str) -> Vec<&String> {
+                let mut resultados: Vec<&String> = Vec::new();
+                resultados = self
+                    .bodega
+                    .keys()
+                    .filter(|nombre| nombre.contains(busqueda))
+                    .collect();
+                let probables = self
+                    .bodega
+                    .keys()
+                    .min_by_key(|insumo| levenshtein(insumo, busqueda));
+                match probables {
+                    Some(opcion) => {
+                        resultados.push(opcion);
+                        return resultados;
+                    }
+                    None => return resultados,
+                }
+            }
 
+            fn obtener(&self, busqueda: &str) -> AppResult<&Insumo> {
+                match self.bodega.get(busqueda) {
+                    Some(insumo) => Ok(&insumo),
+                    None => Err(AppError::DatoInvalido(format!(
+                        "el insumo: {}, no existe",
+                        busqueda
+                    ))),
+                }
+            }
+
+            fn mostrar_todos(&self) -> Vec<String> {
+                let mut resultados: Vec<String> = Vec::new();
+                for (clave, _) in &self.bodega {
+                    resultados.push(clave.clone());
+                }
+                return resultados;
+            }
+        }
+    */
     pub trait RecetasEnMemoria {
         fn añadir(&mut self, receta: negocio::Receta);
         fn eliminar(&mut self, nombre: &str);
         fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta>;
-        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta>;
         fn buscar(&self, busqueda: &str) -> Vec<String>;
         fn listar(&self) -> Vec<String>;
     }
@@ -1235,16 +1247,6 @@ pub mod repositorio {
             }
         }
 
-        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Receta> {
-            match self.libro.get_mut(busqueda) {
-                Some(mut receta) => Ok(receta),
-                None => Err(AppError::ErrorPersonal(format!(
-                    "No se encontro la receta: {}, en el libro.",
-                    busqueda
-                ))),
-            }
-        }
-
         fn buscar(&self, busqueda: &str) -> Vec<String> {
             let mut resultados = Vec::new();
             resultados = self
@@ -1264,6 +1266,140 @@ pub mod repositorio {
                 }
                 None => return resultados,
             }
+        }
+    }
+
+    pub trait Bodega {
+        fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()>;
+        fn eliminar(&self, nombre: &str) -> AppResult<()>;
+        fn obtener(&self, busqueda: &str) -> AppResult<negocio::Insumo>;
+        fn mostrar_todos(&self) -> AppResult<Vec<String>>;
+        fn obtener_todos(&self) -> AppResult<Vec<Insumo>>;
+    }
+
+    pub struct AlmacenEnMemoria {
+        conexion: Connection,
+    }
+
+    impl AlmacenEnMemoria {
+        pub fn nuevo(ruta: &str) -> AppResult<Self> {
+            let conn = Connection::open(ruta)?;
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS insumos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    cantidad INTEGER NOT NULL,
+                    canitdad_minima INTEGER NOT NULL,
+                    precio INTEGER NOT NULL,
+                )",
+                [],
+            )?;
+            Ok(AlmacenEnMemoria { conexion: conn })
+        }
+        fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
+            let id: i64 = self
+                .conexion
+                .query_row(
+                    "SELECT id FROM insumos WHERE nombre = ?",
+                    params![nombre],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo: {}", nombre))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(id)
+        }
+    }
+
+    impl Bodega for AlmacenEnMemoria {
+        fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()> {
+            self.conexion.execute(
+                "INSERT INTO insumos (nombre, cantidad, cantidad_minima, precio)
+                VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    insumo.nombre(),
+                    insumo.obtener_cantidad(),
+                    insumo.obtener_cantidad_minima(),
+                    insumo.obtener_precio()
+                ],
+            )?;
+            let clave = self.conexion.last_insert_rowid();
+            Ok(())
+        }
+        // cambiar nombre por id, y remover id del cuerpo
+        fn eliminar(&self, nombre: &str) -> AppResult<()> {
+            let id = self.obtener_id_con_nombre(nombre)?;
+            let funciono = self
+                .conexion
+                .execute("DELETE FROM insumos WHERE id =?", params![id])?;
+            if funciono == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "El insumo: {}, a eliminar.\nNo fue encontrado.",
+                    nombre
+                )));
+            }
+            Ok(())
+        }
+
+        fn obtener(&self, busqueda: &str) -> AppResult<negocio::Insumo> {
+            let id = self.obtener_id_con_nombre(busqueda)?;
+            self.conexion
+                .query_row(
+                    "SELECT id, nombre, cantidad, cantidad_minima, precio
+                 FROM insumos WHERE id = ?",
+                    params![busqueda],
+                    |row| {
+                        Ok(Insumo::crear_desde_db(
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        )?)
+                    },
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("Inusmo: {}, \nNo encontrado.", busqueda))
+                    }
+                    _ => AppError::DbError(e),
+                })
+        }
+        //AGREGAR ESTA FUNCION AL TRAIT BODEGA:
+        fn mostrar_todos(&self) -> AppResult<Vec<String>> {
+            let mut accion = self
+                .conexion
+                .prepare("SELECT nombre FROM insumos ORDER BY nombre")?;
+            let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
+            let mut nombres = Vec::new();
+            for nombre in nombres_iter {
+                nombres.push(nombre?);
+            }
+            Ok(nombres)
+        }
+
+        fn obtener_todos(&self) -> AppResult<Vec<Insumo>> {
+            let mut accion = self.conexion.prepare(
+                "SELECT id, nombre, cantidad, cantidad_minima, precio
+                FROM insumos ORDER BY nombre",
+            )?;
+            let insumo_iter = accion.query_map([], |fila| {
+                Ok(Insumo::crear_desde_db(
+                    fila.get(0)?,
+                    fila.get(1)?,
+                    fila.get(2)?,
+                    fila.get(3)?,
+                    fila.get(4)?,
+                )?)
+            })?;
+            let mut insumos = Vec::new();
+            for insumo in insumo_iter {
+                insumos.push(insumo?);
+            }
+            Ok(insumos)
         }
     }
 }
@@ -1312,7 +1448,7 @@ pub mod servicio {
             match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
                 Ok(insumo) => {
                     let mut nuevo_insumo = insumo;
-                    self.repositorio.añadir(nombre.as_str(), nuevo_insumo);
+                    self.repositorio.añadir(nuevo_insumo);
                     Ok(())
                 }
                 Err(e) => Err(AppError::ErrorPersonal(format!(
@@ -1321,11 +1457,14 @@ pub mod servicio {
                 ))),
             }
         }
-        pub fn buscar(&self, busqueda: &str) -> Vec<String> {
-            let lista = self.repositorio.mostrar_todos();
+        pub fn buscar(&self, busqueda: &String) -> Vec<String> {
+            let mut lista: Vec<String> = Vec::new();
             let mut resultados = Vec::new();
+            match self.repositorio.mostrar_todos() {
+                Ok(i) => lista = i,
+                Err(e) => resultados.push(e.to_string()),
+            }
             resultados = lista
-                .clone()
                 .into_iter()
                 .filter(|nombre| nombre.contains(busqueda))
                 .collect();
@@ -1342,7 +1481,11 @@ pub mod servicio {
         }
 
         pub fn existe(&self, busqueda: &String) -> bool {
-            let lista = self.repositorio.mostrar_todos();
+            let mut lista: Vec<String>;
+            match self.repositorio.mostrar_todos() {
+                Ok(i) => lista = i,
+                Err(e) => return false,
+            }
             if lista.contains(busqueda) {
                 return true;
             } else {
@@ -1361,7 +1504,7 @@ pub mod servicio {
                 )));
             }
         }
-        pub fn obtener(&self, busqueda: &String) -> AppResult<&negocio::Insumo> {
+        pub fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo> {
             if self.existe(busqueda) {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(insumo) => Ok(insumo),
@@ -1373,27 +1516,15 @@ pub mod servicio {
                     }
                 };
             }
+
+            // IMPORTANTE GUARDAR LOS CAMBIOS DEL CLON   }
             return Err(AppError::ErrorPersonal(format!(
                 "No existe el insumo: {}",
                 busqueda
             )));
         }
-        fn obtener_mutable(&mut self, busqueda: &String) -> AppResult<&mut negocio::Insumo> {
-            if self.existe(busqueda) {
-                return match self.repositorio.obtener_mutable(busqueda) {
-                    Ok(insumo) => Ok(insumo),
-                    Err(e) => Err(AppError::ErrorPersonal(format!(
-                        "Error al obtener el insumo: {}. \nError: {}",
-                        busqueda, e
-                    ))),
-                };
-            }
-            return Err(AppError::DatoInvalido(format!(
-                "No existe el insumo: {} en el almacen.",
-                busqueda
-            )));
-        }
 
+        //NTE GUARDAR LOS CAMBIOS DEL s
         pub fn usar(&mut self, busqueda: &String, cantidad: u32) -> AppResult<u32> {
             if !self.existe(busqueda) {
                 return Err(AppError::DatoInvalido(format!(
@@ -1401,8 +1532,9 @@ pub mod servicio {
                     busqueda
                 )));
             }
-            match self.obtener_mutable(busqueda) {
-                Ok(insumo) => {
+            match self.obtener(busqueda) {
+                Ok(ins) => {
+                    let mut insumo = ins.clone();
                     insumo.usar(cantidad);
                     return Ok(insumo.obtener_cantidad());
                 }
