@@ -1,8 +1,8 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
-//      SIGUIENTES TAREAS ANTES DE INICIAR EL MODULO DE LOOPS:
-// //      FALTA FUNCION DE EDITAR RECETA.
-//      ) refinar pequeños ajustes varios: {
 //
+// //      Trabajando en... FUNCION DE EDITAR RECETA.
+//      ) refinar pequeños ajustes varios: {
+//               Agregar "campò vacio a la lista de errores de Aplicacion"
 //      }
 
 use auxiliares::{no_es_cero, solicitar_texto};
@@ -393,6 +393,7 @@ pub mod loops {
             }
         }
     }
+
     pub fn ui_eliminar_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
         println!("Que insumo quieres eliminar?");
         let insumo = solicitar_texto();
@@ -710,6 +711,8 @@ pub mod negocio {
     //antes que crear la instancia. o devolver AppError para casi todo :u
     //
 
+    use std::num::Saturating;
+
     use chrono::{DateTime, TimeZone};
     use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
@@ -904,6 +907,36 @@ pub mod negocio {
         }
         pub fn ingredientes(&self) -> Vec<(String, u32)> {
             self.ingredientes.clone()
+        }
+        pub fn actualizar_nombre(&mut self, nombre: String) -> AppResult<()> {
+            if nombre.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "El nuevo nombre esta vacio".to_string(),
+                ));
+            }
+            self.nombre = nombre;
+            Ok(())
+        }
+        pub fn actualizar_costo(&mut self, costo: f64) -> AppResult<()> {
+            if costo == 0.0 {
+                return Err(AppError::DatoInvalido(
+                    "El nuevo costo esta en 0".to_string(),
+                ));
+            }
+            self.costo = costo;
+            Ok(())
+        }
+        pub fn actualizar_ingredientes(
+            &mut self,
+            ingredientes: Vec<(String, u32)>,
+        ) -> AppResult<()> {
+            if ingredientes.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "La lista de ingredientes esta vacia".to_string(),
+                ));
+            }
+            self.ingredientes = ingredientes;
+            Ok(())
         }
     }
 
@@ -1473,6 +1506,78 @@ pub mod servicio {
                 }
             }
         }
+
+        pub fn editar_receta(
+            &mut self,
+            almacen: &ServicioDeAlmacen,
+            receta: &String,
+            nombre: Option<String>,
+            ingredientes: Option<Vec<(String, u32)>>,
+        ) -> AppResult<()> {
+            if !self.existe(receta) {
+                return Err(AppError::DatoInvalido(format!(
+                    "No se encontro en el libro, la receta: {}",
+                    receta
+                )));
+            }
+            let mut receta_a_editar: negocio::Receta;
+            match self.obtener(receta) {
+                Ok(i) => receta_a_editar = i.clone(),
+                Err(e) => {
+                    return Err(AppError::ErrorPersonal(format!(
+                        "Error al obtener el insumo: {}",
+                        receta
+                    )));
+                }
+            }
+            let mut clave = receta.clone();
+            if let Some(nuevo_nombre) = nombre {
+                if nuevo_nombre.is_empty() {
+                    return Err(AppError::DatoInvalido(
+                        "El nuevo nombre no puede estar vacio.".to_string(),
+                    ));
+                }
+                if nuevo_nombre != *receta && self.existe(receta) {
+                    return Err(AppError::DatoInvalido(format!(
+                        "El nuevo nombre coincide con otra receta."
+                    )));
+                }
+                if nuevo_nombre != *receta {
+                    self.repositorio.eliminar(&nuevo_nombre);
+                }
+                receta_a_editar.actualizar_nombre(nuevo_nombre.clone());
+                clave = nuevo_nombre;
+            }
+            let mut costo = 0.0;
+            if let Some(ingr) = ingredientes {
+                if ingr.is_empty() {
+                    return Err(AppError::DatoInvalido(
+                        "La nueva lista de ingredientes esta vacia.".to_string(),
+                    ));
+                }
+                for (ingrediente, cantidad) in &ingr {
+                    if !almacen.existe(ingrediente) {
+                        return Err(AppError::DatoInvalido(format!(
+                            "El insumo: {}, no existe.",
+                            ingrediente
+                        )));
+                    }
+                    if *cantidad == 0 {
+                        return Err(AppError::DatoInvalido(format!(
+                            "En el ingrediente: {}.\nLa cantidad no puede ser 0",
+                            ingrediente
+                        )));
+                    }
+                    match almacen.obtener(ingrediente) {
+                        Ok(insumo) => costo += insumo.costo_por_gramos(*cantidad as f64),
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+            self.repositorio.añadir(receta_a_editar);
+            Ok(())
+        }
+
         pub fn buscar(&self, busqueda: &str) -> Vec<String> {
             let recetas = self.repositorio.listar();
             let mut resultados: Vec<String> = Vec::new();
