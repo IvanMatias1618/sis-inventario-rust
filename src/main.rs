@@ -122,6 +122,15 @@ fn main() {
                 }
                 break;
             },
+            14 => loop {
+                if loops::ui_editar_receta(&mut servicio_de_recetas, &servicio_de_almacen) {
+                    break;
+                }
+                if reintentar() {
+                    continue;
+                }
+                break;
+            },
             _ => loop {
                 println!("No soy un chihuahua ! \n si soy un chihuahua");
             },
@@ -138,6 +147,7 @@ pub mod loops {
     use crate::negocio::*;
     use crate::repositorio;
     use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
+    use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
     use std::io;
 
     // Dado que estamos en una cli, estaran separadas las funciones de ui, y las de cli.
@@ -515,6 +525,52 @@ pub mod loops {
         }
     }
 
+    pub fn ui_editar_receta(libro: &mut ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
+        println!("Que receta quieres editar?");
+        let receta = solicitar_texto();
+        if !libro.existe(&receta) {
+            println!("No se encontro la receta: {}", receta);
+            return false;
+        }
+        let mut nombre: Option<String> = None;
+        println!("Deseas cambiar el nombre de la receta? \n1) Si. \n2) No.");
+        let mut res = no_es_cero();
+        if res == 1 {
+            let nombre = Some(solicitar_texto());
+        }
+        println!("Deseas cambiar los ingredientes de la receta? \n1) Si. \n2) No.");
+        res = no_es_cero();
+        let mut ingredientes: Option<Vec<(String, u32)>> = None;
+        if res == 1 {
+            let mut n_ingredientes: Vec<(String, u32)> = Vec::new();
+            loop {
+                println!("Que ingrediente quieres usar?");
+                let ingrediente = solicitar_texto();
+                println!("Qué cantidad de gramos usaras?");
+                let cantidad = no_es_cero();
+                let conjunto = (ingrediente, cantidad);
+                n_ingredientes.push(conjunto);
+                println!("Gustas añadir mas ingredientes? \n1) si, \n2) No.");
+                res = no_es_cero();
+                if res == 1 {
+                    continue;
+                }
+                ingredientes = Some(n_ingredientes);
+                break;
+            }
+        }
+        match libro.editar_receta(almacen, &receta, nombre, ingredientes) {
+            Ok(_) => {
+                println!("Se ha editado la receta exitosamente.");
+                return true;
+            }
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        }
+    }
+
     //   FUNCIONES DE CLI
     //
     pub fn crear_insumo(
@@ -643,6 +699,19 @@ pub mod loops {
                 e, insumo
             ))),
         }
+    }
+
+    pub fn editar_receta(
+        libro: &mut ServicioDeRecetas,
+        receta: &String,
+        nombre: Option<String>,
+        ingredientes: Option<Vec<(String, u32)>>,
+        almacen: &ServicioDeAlmacen,
+    ) -> AppResult<()> {
+        return match libro.editar_receta(almacen, receta, nombre, ingredientes) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        };
     }
 } //1
 
