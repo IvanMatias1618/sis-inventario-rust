@@ -2,11 +2,11 @@
 //
 //      PENDIENTES:
 //           fn Usar en ServicioALmacen: guardar los cambios LINEA: 1536
-//      SOLUCIONAR: Al modificar un insumo las recetas se rompen.
-//             CAMBIAR: de busqueda por nombre a uuid.
+//
 //      ) refinar pequeños ajustes varios: {
 //
-//               Agregar "campò vacio a la lista de errores de Aplicacion"
+//            A: usar el operador ? para reducir verbosidad.
+//            B:  modificar la struct servicio para almacenar almacen, asi no se necesita pasar como argumento.
 //      }
 
 use auxiliares::{no_es_cero, solicitar_texto};
@@ -17,11 +17,14 @@ fn main() {
     use crate::repositorio;
     use crate::servicio;
 
-    let mut almacen = match repositorio::AlmacenEnMemoria::nuevo("insumos") {
+    let mut almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
         Ok(almacen) => almacen,
         Err(e) => panic!("Error al abrir la base de datos porque: {}", e),
     };
-    let mut recetario = repositorio::RecetarioEnMemoria::nuevo();
+    let mut recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
+        Ok(recetario) => recetario,
+        Err(e) => panic!("Error al abrir la base de datos con el recetario: {}", e),
+    };
 
     println!("almacen cargado");
     let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
@@ -370,12 +373,25 @@ pub mod loops {
     pub fn ui_receta_valor(libro: &ServicioDeRecetas) -> bool {
         println!("Que receta gustas buscar?");
         let busqueda = solicitar_texto();
-        if !libro.existe(&busqueda) {
+        let bandera = match libro.existe(&busqueda) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        };
+        if !bandera {
             println!(
                 "No se han encontrado la receta: {}.\nBuscando coincidencias...",
                 &busqueda
             );
-            let resultados = libro.buscar(&busqueda);
+            let resultados = match libro.buscar(&busqueda) {
+                Ok(res) => res,
+                Err(e) => {
+                    println!("{}", e);
+                    return false;
+                }
+            };
             if resultados.is_empty() {
                 println!("No se encontraron coincidencias.");
                 return false;
@@ -405,10 +421,17 @@ pub mod loops {
     pub fn ui_eliminar_receta(libro: &mut ServicioDeRecetas) -> bool {
         println!("que receta quieres eliminar?");
         let receta = solicitar_texto();
-        if !libro.existe(&receta) {
+        let bandera = match libro.existe(&receta) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        };
+        if !bandera {
             println!("No existe la receta: {}, en el libro", receta);
             return false;
-        }
+        };
         match eliminar_receta(libro, &receta) {
             Ok(i) => {
                 println!("{}", i);
@@ -443,12 +466,25 @@ pub mod loops {
     pub fn ui_producir_receta(almacen: &mut ServicioDeAlmacen, libro: &ServicioDeRecetas) -> bool {
         println!("Que receta quieres producir?");
         let receta = solicitar_texto();
-        if !libro.existe(&receta) {
+        let existe = match libro.existe(&receta) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        };
+        if !existe {
             println!(
                 "No se encontro la receta: {}.\nBuscando similitudes...",
                 &receta
             );
-            let resultados = libro.buscar(&receta);
+            let resultados = match libro.buscar(&receta) {
+                Ok(res) => res,
+                Err(e) => {
+                    println!("{}", e);
+                    return false;
+                }
+            };
             if resultados.is_empty() {
                 println!("No se encontraron similitudes con: {}", receta);
                 return false;
@@ -545,7 +581,14 @@ pub mod loops {
     pub fn ui_editar_receta(libro: &mut ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
         println!("Que receta quieres editar?");
         let receta = solicitar_texto();
-        if !libro.existe(&receta) {
+        let existe = match libro.existe(&receta) {
+            Ok(b) => b,
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        };
+        if !existe {
             println!("No se encontro la receta: {}", receta);
             return false;
         }
@@ -644,7 +687,14 @@ pub mod loops {
     }
 
     pub fn buscar_receta(libro: &ServicioDeRecetas, busqueda: &String) -> Vec<String> {
-        return libro.buscar(busqueda);
+        return match libro.buscar(busqueda) {
+            Ok(res) => res,
+            Err(e) => {
+                let mut res = Vec::new();
+                res.push(e.to_string());
+                return res;
+            }
+        };
     }
     pub fn ver_todos_los_insumos(almacen: &ServicioDeAlmacen) -> Vec<String> {
         return match almacen.mostrar_todos() {
@@ -657,7 +707,14 @@ pub mod loops {
         };
     }
     pub fn ver_todos_las_recetas(libro: &ServicioDeRecetas) -> Vec<String> {
-        return libro.mostrar_todos();
+        return match libro.mostrar_todos() {
+            Ok(res) => res,
+            Err(e) => {
+                let mut resultado = Vec::new();
+                resultado.push(e.to_string());
+                return resultado;
+            }
+        };
     }
 
     pub fn mostrar_insumo(
@@ -986,7 +1043,7 @@ pub mod negocio {
     }
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Receta {
-        id: String,
+        id: Option<i64>,
         nombre: String,
         ingredientes: Vec<(String, u32)>,
         costo: f64,
@@ -1010,12 +1067,25 @@ pub mod negocio {
             }
 
             let mut receta = Receta {
-                id: Uuid::new_v4().to_string(),
+                id: None,
                 nombre,
                 ingredientes,
                 costo,
             };
             Ok(receta)
+        }
+        pub fn desde_db(
+            id: i64,
+            nombre: String,
+            ingredientes: Vec<(String, u32)>,
+            costo: f64,
+        ) -> Self {
+            Receta {
+                id: Some(id),
+                nombre,
+                ingredientes,
+                costo,
+            }
         }
 
         pub fn costo(&self) -> f64 {
@@ -1099,7 +1169,10 @@ pub mod negocio {
 }
 
 pub mod repositorio {
-    use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
+    use crate::{
+        negocio::{self, AppError, AppResult, Insumo, Receta},
+        servicio::ServicioDeRecetas,
+    };
     use rusqlite::{Connection, Error, params};
     use std::collections::HashMap;
     use strsim::levenshtein;
@@ -1230,14 +1303,154 @@ pub mod repositorio {
             }
         }
     */
-    pub trait RecetasEnMemoria {
-        fn añadir(&mut self, receta: negocio::Receta);
-        fn eliminar(&mut self, nombre: &str);
-        fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta>;
-        fn buscar(&self, busqueda: &str) -> Vec<String>;
-        fn listar(&self) -> Vec<String>;
+
+    pub struct RecetarioEnMemoria {
+        conexion: Connection,
     }
 
+    impl RecetarioEnMemoria {
+        pub fn nuevo(ruta: &str) -> AppResult<Self> {
+            let conexion = Connection::open(ruta)?;
+            conexion.execute(
+                "CREATE TABLE IF NOT EXISTS recetas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL UNIQUE,
+                    costo REAL NOT NULL
+                )",
+                [],
+            )?;
+            conexion.execute(
+                "CREATE TABLE IF NOT EXISTS ingredientes_en_receta (
+                    receta_id INTEGER NOT NULL,
+                    ingrediente_id INTEGER NOT NULL,
+                    cantidad INTEGER NOT NULL,
+                    PRIMARY KEY (receta_id, ingrediente_id),
+                    FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE,
+                    FOREIGN KEY (ingrediente_id) REFERENCES insumos(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+            Ok(RecetarioEnMemoria { conexion })
+        }
+        fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
+            let id: i64 = self
+                .conexion
+                .query_row(
+                    "SELECT id FROM recetas WHERE nombre = ?",
+                    params![nombre],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo: {}", nombre))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(id)
+        }
+    }
+
+    impl RecetasEnMemoria for RecetarioEnMemoria {
+        fn añadir(&self, receta: Receta, almacen: &AlmacenEnMemoria) -> AppResult<()> {
+            let transaccion = self.conexion.transaction()?;
+
+            transaccion.execute(
+                "INSERT INTO recetas (nombre, costo) VALUES (?1, ?2)",
+                params![receta.nombre(), receta.costo(),],
+            )?;
+            let receta_id = transaccion.last_insert_rowid();
+            for (insumo, cantidad) in &receta.ingredientes() {
+                let insumo_id = almacen.obtener_id_con_nombre(insumo)?;
+                transaccion.execute(
+                    "INSERT INTO ingredientes_en_receta (receta_id, ingrediente_id, cantidad)
+                    VALUES (?1, ?2, ?3)",
+                    params![receta_id.clone(), insumo_id, cantidad,],
+                )?;
+            }
+            transaccion.commit()?;
+            Ok(())
+        }
+        fn eliminar(&self, nombre: &str) -> AppResult<()> {
+            let id = self.obtener_id_con_nombre(nombre)?;
+            let bandera = self
+                .conexion
+                .execute("DELETE FROM recetas WHERE id =?", params![id])?;
+            if bandera == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "El insumo: {}, no se pudo eliminar.\nNo fue encontrado",
+                    nombre
+                )));
+            }
+            Ok(())
+        }
+        fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta> {
+            let id = self.obtener_id_con_nombre(busqueda)?;
+
+            let mut accion = self.conexion.prepare(
+                "SELECT ingrediente_id, cantidad FROM ingredientes_en_receta WHERE receta_id = ?",
+                params![id],
+            )?;
+            let ingredientes_iter = accion.query_map([], |fila| {
+                fila.get(0);
+                fila.get(1)
+            })?;
+            let mut ingredientes = Vec::new();
+            for (insumo, cantidad) in ingredientes_iter {
+                let conjunto = (insumo.to_string(), cantidad as u32);
+                ingredientes.push(conjunto);
+            }
+
+            self.conexion
+                .query_row(
+                    "SELECT id, nombre, costo WHERE id = ?",
+                    params![id],
+                    |fila| {
+                        Ok(Receta::desde_db(
+                            fila.get(0)?,
+                            fila.get(1)?,
+                            ingredientes,
+                            fila.get(2)?,
+                        ))
+                    },
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(format!(
+                        "Error al obtener el insumo desde db.: {}",
+                        busqueda
+                    )),
+                    _ => AppError::DbError(e),
+                })
+        }
+        fn listar(&self) -> AppResult<Vec<String>> {
+            let mut accion = self
+                .conexion
+                .prepare("SELECT nombre FROM recetas ORDER BY nombre")?;
+            let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
+            let mut nombres = Vec::new();
+            for nombre in nombres_iter {
+                nombres.push(nombre?);
+            }
+            Ok(nombres)
+        }
+        fn obtener_todos(&self) -> AppResult<Vec<Receta>> {
+            let recetas_lista = self.listar()?;
+            let mut recetas = Vec::new();
+            for receta in &recetas_lista {
+                let item = self.obtener(receta)?;
+                recetas.push(item);
+            }
+            Ok(recetas)
+        }
+    }
+
+    pub trait RecetasEnMemoria {
+        fn añadir(&self, receta: negocio::Receta, almacen: &AlmacenEnMemoria) -> AppResult<()>;
+        fn eliminar(&self, nombre: &str) -> AppResult<()>;
+        fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta>;
+        fn obtener_todos(&self) -> AppResult<Vec<Receta>>;
+        fn listar(&self) -> AppResult<Vec<String>>;
+    }
+    /*
     pub struct RecetarioEnMemoria {
         libro: HashMap<String, negocio::Receta>,
     }
@@ -1295,7 +1508,7 @@ pub mod repositorio {
                 None => return resultados,
             }
         }
-    }
+    }*/
 
     pub trait Bodega {
         fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()>;
@@ -1333,7 +1546,7 @@ pub mod repositorio {
             println!("Logre crear la tabla.");
             Ok(AlmacenEnMemoria { conexion: conn })
         }
-        fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
+        pub fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
             let id: i64 = self
                 .conexion
                 .query_row(
@@ -1746,7 +1959,7 @@ pub mod servicio {
             match negocio::Receta::nuevo(n_receta.clone(), ingredientes, costo) {
                 Ok(receta) => {
                     let nuevo = receta;
-                    self.repositorio.añadir(nuevo);
+                    self.repositorio.añadir(nuevo, almacen);
                     Ok(())
                 }
                 Err(e) => {
@@ -1765,7 +1978,7 @@ pub mod servicio {
             nombre: Option<String>,
             ingredientes: Option<Vec<(String, u32)>>,
         ) -> AppResult<()> {
-            if !self.existe(receta) {
+            if !self.existe(receta)? {
                 return Err(AppError::DatoInvalido(format!(
                     "No se encontro en el libro, la receta: {}",
                     receta
@@ -1788,7 +2001,7 @@ pub mod servicio {
                         "El nuevo nombre no puede estar vacio.".to_string(),
                     ));
                 }
-                if nuevo_nombre != *receta && self.existe(receta) {
+                if nuevo_nombre != *receta && self.existe(receta)? {
                     return Err(AppError::DatoInvalido(format!(
                         "El nuevo nombre coincide con otra receta."
                     )));
@@ -1825,12 +2038,12 @@ pub mod servicio {
                     }
                 }
             }
-            self.repositorio.añadir(receta_a_editar);
+            self.repositorio.añadir(receta_a_editar, almacen);
             Ok(())
         }
 
-        pub fn buscar(&self, busqueda: &str) -> Vec<String> {
-            let recetas = self.repositorio.listar();
+        pub fn buscar(&self, busqueda: &str) -> AppResult<Vec<String>> {
+            let recetas = self.repositorio.listar()?;
             let mut resultados: Vec<String> = Vec::new();
             resultados = recetas
                 .clone()
@@ -1839,7 +2052,7 @@ pub mod servicio {
                 .collect();
 
             if !resultados.is_empty() {
-                return resultados;
+                return Ok(resultados);
             }
             let probables = recetas
                 .into_iter()
@@ -1847,21 +2060,21 @@ pub mod servicio {
             match probables {
                 Some(opcion) => {
                     resultados.push(opcion.clone());
-                    return resultados;
+                    return Ok(resultados);
                 }
-                None => return resultados,
+                None => return Ok(resultados),
             }
         }
-        pub fn existe(&self, busqueda: &str) -> bool {
-            let recetas = self.repositorio.listar();
+        pub fn existe(&self, busqueda: &str) -> AppResult<bool> {
+            let recetas = self.repositorio.listar()?;
             if recetas.contains(&busqueda.to_string()) {
-                return true;
+                return Ok(true);
             }
-            return false;
+            return Ok(false);
         }
 
-        pub fn obtener(&self, busqueda: &str) -> AppResult<&negocio::Receta> {
-            if self.existe(busqueda) {
+        pub fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta> {
+            if self.existe(busqueda)? {
                 return match self.repositorio.obtener(busqueda) {
                     Ok(receta) => Ok(receta),
                     Err(e) => Err(AppError::ErrorPersonal(format!(
@@ -1877,7 +2090,7 @@ pub mod servicio {
         }
 
         pub fn obtener_clon(&self, busqueda: &String) -> AppResult<&mut negocio::Receta> {
-            if self.existe(busqueda) {
+            if self.existe(busqueda)? {
                 match self.repositorio.obtener(busqueda) {
                     Ok(receta) => Ok(receta.clone()),
                     Err(e) => Err(AppError::ErrorPersonal(format!(
@@ -1893,7 +2106,7 @@ pub mod servicio {
         }
 
         pub fn eliminar(&mut self, busqueda: &str) -> AppResult<()> {
-            if self.existe(busqueda) {
+            if self.existe(busqueda)? {
                 self.repositorio.eliminar(busqueda);
                 return Ok(());
             }
@@ -1902,7 +2115,7 @@ pub mod servicio {
                 busqueda
             )));
         }
-        pub fn mostrar_todos(&self) -> Vec<String> {
+        pub fn mostrar_todos(&self) -> AppResult<Vec<String>> {
             return self.repositorio.listar();
         }
 
@@ -1910,7 +2123,7 @@ pub mod servicio {
             &self,
             busqueda: &String,
         ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
-            if self.existe(busqueda) {
+            if self.existe(busqueda)? {
                 return match self.obtener(busqueda) {
                     Ok(receta) => {
                         let conjunto = (
@@ -1938,7 +2151,7 @@ pub mod servicio {
             nombre_receta: &String,
             cantidad: u32,
         ) -> AppResult<()> {
-            if self.existe(nombre_receta) {
+            if self.existe(nombre_receta)? {
                 match self.obtener(nombre_receta) {
                     Ok(receta) => {
                         for producto in 0..cantidad {
