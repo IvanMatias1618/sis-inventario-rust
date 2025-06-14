@@ -376,7 +376,7 @@ pub mod loops {
         let bandera = match libro.existe(&busqueda) {
             Ok(b) => b,
             Err(e) => {
-                println!("{}", e);
+                println!("Error de libroexiste: {}", e);
                 return false;
             }
         };
@@ -412,7 +412,7 @@ pub mod loops {
                 true
             }
             Err(e) => {
-                println!("Error: {}\nAl obtener la receta: {}", e, busqueda);
+                println!("415Error: {}\nAl obtener la receta: {}", e, busqueda);
                 false
             }
         };
@@ -729,6 +729,7 @@ pub mod loops {
         busqueda: &String,
         almacen: &ServicioDeAlmacen,
     ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
+        println!("AQui 732");
         libro.mostrar_receta(busqueda, almacen)
     }
     pub fn eliminar_receta(libro: &mut ServicioDeRecetas, busqueda: &String) -> AppResult<String> {
@@ -1265,10 +1266,10 @@ pub mod repositorio {
                 let (insumo_id, cantidad) = ingrediente_result?;
                 ingredientes.push((insumo_id, cantidad));
             }
-
+            println!("1269");
             self.conexion
                 .query_row(
-                    "SELECT id, nombre, costo WHERE id = ?",
+                    "SELECT id, nombre, costo FROM recetas WHERE id = ?",
                     params![id],
                     |fila| {
                         Ok(Receta::desde_db(
@@ -1288,6 +1289,7 @@ pub mod repositorio {
                 })
         }
         fn listar(&self) -> AppResult<Vec<String>> {
+            println!("1292");
             let mut accion = self
                 .conexion
                 .prepare("SELECT nombre FROM recetas ORDER BY nombre")?;
@@ -1630,8 +1632,17 @@ pub mod servicio {
             }
             match self.obtener(busqueda) {
                 Ok(mut insumo) => {
+                    let cantidad_nueva: u32;
                     insumo.usar(cantidad);
-                    return Ok(insumo.obtener_cantidad());
+                    let cantidad_nueva = insumo.obtener_cantidad();
+                    self.eliminar(busqueda)?;
+                    self.añadir(
+                        insumo.nombre().clone(),
+                        cantidad,
+                        insumo.obtener_cantidad_minima(),
+                        insumo.obtener_precio(),
+                    )?;
+                    return Ok(cantidad_nueva);
                 }
                 Err(e) => Err(AppError::ErrorPersonal(format!(
                     "Error al obtener el insumo: {}. \nError: {}",
@@ -1904,6 +1915,7 @@ pub mod servicio {
             }
         }
         pub fn existe(&self, busqueda: &str) -> AppResult<bool> {
+            println!("1916");
             let recetas = self.repositorio.listar()?;
             if recetas.contains(&busqueda.to_string()) {
                 return Ok(true);
@@ -1913,6 +1925,7 @@ pub mod servicio {
 
         pub fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta> {
             if self.existe(busqueda)? {
+                println!("1927");
                 return match self.repositorio.obtener(busqueda) {
                     Ok(receta) => Ok(receta),
                     Err(e) => Err(AppError::ErrorPersonal(format!(
@@ -1963,18 +1976,22 @@ pub mod servicio {
             almacen: &ServicioDeAlmacen,
         ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
             if self.existe(busqueda)? {
+                println!("1978");
                 return match self.obtener(busqueda) {
                     Ok(receta) => {
+                        println!("1981");
                         let mut ingredientes: Vec<(String, u32)> = Vec::new();
-                        for (id, cant) in receta.ingredientes() {
+                        let ingredientes_receta = receta.ingredientes();
+                        for (id, cant) in &ingredientes_receta {
                             let nombre = almacen.obtener_nombre_con_id(&id)?;
-                            ingredientes.push((nombre, cant));
+                            ingredientes.push((nombre, *cant));
                         }
+                        println!("1987");
                         let conjunto = (receta.nombre().clone(), ingredientes, receta.costo());
                         return Ok(conjunto);
                     }
                     Err(e) => Err(AppError::ErrorPersonal(format!(
-                        "Error al obtener la receta: {}. \nError: {}",
+                        "1993 Error al obtener la receta: {}. \nError: {}",
                         busqueda, e
                     ))),
                 };
