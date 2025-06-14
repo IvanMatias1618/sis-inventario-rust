@@ -1045,14 +1045,14 @@ pub mod negocio {
     pub struct Receta {
         id: Option<i64>,
         nombre: String,
-        ingredientes: Vec<(String, u32)>,
+        ingredientes: Vec<(i64, u32)>,
         costo: f64,
     }
 
     impl Receta {
         pub fn nuevo(
             nombre: String,
-            ingredientes: Vec<(String, u32)>,
+            ingredientes: Vec<(i64, u32)>,
             costo: f64,
         ) -> AppResult<Receta> {
             if nombre.is_empty() {
@@ -1077,7 +1077,7 @@ pub mod negocio {
         pub fn desde_db(
             id: i64,
             nombre: String,
-            ingredientes: Vec<(String, u32)>,
+            ingredientes: Vec<(i64, u32)>,
             costo: f64,
         ) -> Self {
             Receta {
@@ -1094,7 +1094,7 @@ pub mod negocio {
         pub fn nombre(&self) -> &String {
             &self.nombre
         }
-        pub fn ingredientes(&self) -> Vec<(String, u32)> {
+        pub fn ingredientes(&self) -> Vec<(i64, u32)> {
             self.ingredientes.clone()
         }
         pub fn actualizar_nombre(&mut self, nombre: String) -> AppResult<()> {
@@ -1115,10 +1115,7 @@ pub mod negocio {
             self.costo = costo;
             Ok(())
         }
-        pub fn actualizar_ingredientes(
-            &mut self,
-            ingredientes: Vec<(String, u32)>,
-        ) -> AppResult<()> {
+        pub fn actualizar_ingredientes(&mut self, ingredientes: Vec<(i64, u32)>) -> AppResult<()> {
             if ingredientes.is_empty() {
                 return Err(AppError::DatoInvalido(
                     "La lista de ingredientes esta vacia".to_string(),
@@ -1351,7 +1348,7 @@ pub mod repositorio {
     }
 
     impl RecetasEnMemoria for RecetarioEnMemoria {
-        fn añadir(&self, receta: Receta, almacen: &AlmacenEnMemoria) -> AppResult<()> {
+        fn añadir(&mut self, receta: Receta, almacen: &AlmacenEnMemoria) -> AppResult<()> {
             let transaccion = self.conexion.transaction()?;
 
             transaccion.execute(
@@ -1360,11 +1357,10 @@ pub mod repositorio {
             )?;
             let receta_id = transaccion.last_insert_rowid();
             for (insumo, cantidad) in &receta.ingredientes() {
-                let insumo_id = almacen.obtener_id_con_nombre(insumo)?;
                 transaccion.execute(
                     "INSERT INTO ingredientes_en_receta (receta_id, ingrediente_id, cantidad)
                     VALUES (?1, ?2, ?3)",
-                    params![receta_id.clone(), insumo_id, cantidad,],
+                    params![receta_id.clone(), insumo, cantidad,],
                 )?;
             }
             transaccion.commit()?;
@@ -1388,16 +1384,14 @@ pub mod repositorio {
 
             let mut accion = self.conexion.prepare(
                 "SELECT ingrediente_id, cantidad FROM ingredientes_en_receta WHERE receta_id = ?",
-                params![id],
             )?;
-            let ingredientes_iter = accion.query_map([], |fila| {
-                fila.get(0);
-                fila.get(1)
+            let ingredientes_iter = accion.query_map(params![id], |fila| {
+                Ok(((fila.get::<_, i64>(0)?), (fila.get::<_, u32>(1)?)))
             })?;
-            let mut ingredientes = Vec::new();
-            for (insumo, cantidad) in ingredientes_iter {
-                let conjunto = (insumo.to_string(), cantidad as u32);
-                ingredientes.push(conjunto);
+            let mut ingredientes: Vec<(i64, u32)> = Vec::new();
+            for ingrediente_result in ingredientes_iter {
+                let (insumo_id, cantidad) = ingrediente_result?;
+                ingredientes.push((insumo_id, cantidad));
             }
 
             self.conexion
@@ -1444,7 +1438,8 @@ pub mod repositorio {
     }
 
     pub trait RecetasEnMemoria {
-        fn añadir(&self, receta: negocio::Receta, almacen: &AlmacenEnMemoria) -> AppResult<()>;
+        fn añadir(&mut self, receta: negocio::Receta, almacen: &AlmacenEnMemoria)
+        -> AppResult<()>;
         fn eliminar(&self, nombre: &str) -> AppResult<()>;
         fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta>;
         fn obtener_todos(&self) -> AppResult<Vec<Receta>>;
@@ -1928,6 +1923,7 @@ pub mod servicio {
                 ));
             }
             let mut costo = 0.0;
+            let mut ingredientes_con_id: Vec<(i64, u32)> = Vec::new();
             for (nombre, cantidad) in &ingredientes {
                 if nombre.is_empty() {
                     return Err(AppError::DatoInvalido(
@@ -1946,7 +1942,11 @@ pub mod servicio {
                     )));
                 }
                 match almacen.obtener(nombre) {
-                    Ok(insumo) => costo += insumo.costo_por_gramos((*cantidad).into()),
+                    Ok(insumo) => {
+                        let id = Ok(insumo.obtener_id())?;
+                        ingredientes_con_id.push((id, cantidad.clone()));
+                        costo += insumo.costo_por_gramos((*cantidad).into());
+                    }
                     Err(e) => {
                         return Err(AppError::ErrorPersonal(format!(
                             "error: {}, al obtener el insumo: {}",
@@ -1956,7 +1956,7 @@ pub mod servicio {
                 }
             }
 
-            match negocio::Receta::nuevo(n_receta.clone(), ingredientes, costo) {
+            match negocio::Receta::nuevo(n_receta.clone(), ingredientes_con_id, costo) {
                 Ok(receta) => {
                     let nuevo = receta;
                     self.repositorio.añadir(nuevo, almacen);
