@@ -87,7 +87,7 @@ fn main() {
                 break;
             },
             9 => loop {
-                if loops::ui_receta_valor(&servicio_de_recetas) {
+                if loops::ui_receta_valor(&servicio_de_recetas, &servicio_de_almacen) {
                     break;
                 }
                 if reintentar() {
@@ -370,7 +370,7 @@ pub mod loops {
         }
     }
 
-    pub fn ui_receta_valor(libro: &ServicioDeRecetas) -> bool {
+    pub fn ui_receta_valor(libro: &ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
         println!("Que receta gustas buscar?");
         let busqueda = solicitar_texto();
         let bandera = match libro.existe(&busqueda) {
@@ -402,7 +402,7 @@ pub mod loops {
             }
             return false;
         }
-        return match libro.mostrar_receta(&busqueda) {
+        return match libro.mostrar_receta(&busqueda, almacen) {
             Ok(receta) => {
                 println!("Receta: {}\nNombre: {}", busqueda, receta.0);
                 for (insumo, cantidad) in receta.1 {
@@ -727,8 +727,9 @@ pub mod loops {
     pub fn mostrar_receta(
         libro: &ServicioDeRecetas,
         busqueda: &String,
+        almacen: &ServicioDeAlmacen,
     ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
-        libro.mostrar_receta(busqueda)
+        libro.mostrar_receta(busqueda, almacen)
     }
     pub fn eliminar_receta(libro: &mut ServicioDeRecetas, busqueda: &String) -> AppResult<String> {
         match libro.eliminar(busqueda) {
@@ -1348,7 +1349,7 @@ pub mod repositorio {
     }
 
     impl RecetasEnMemoria for RecetarioEnMemoria {
-        fn añadir(&mut self, receta: Receta, almacen: &AlmacenEnMemoria) -> AppResult<()> {
+        fn añadir(&mut self, receta: Receta) -> AppResult<()> {
             let transaccion = self.conexion.transaction()?;
 
             transaccion.execute(
@@ -1438,8 +1439,7 @@ pub mod repositorio {
     }
 
     pub trait RecetasEnMemoria {
-        fn añadir(&mut self, receta: negocio::Receta, almacen: &AlmacenEnMemoria)
-        -> AppResult<()>;
+        fn añadir(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn eliminar(&self, nombre: &str) -> AppResult<()>;
         fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta>;
         fn obtener_todos(&self) -> AppResult<Vec<Receta>>;
@@ -1558,6 +1558,22 @@ pub mod repositorio {
                 })?;
             println!("1350");
             Ok(id)
+        }
+        pub fn obtener_nombre_con_id(&self, id: &i64) -> AppResult<String> {
+            let nombre = self
+                .conexion
+                .query_row(
+                    "SELECT nombre FROM insumos WHERE id = ?",
+                    params![id],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo con id: {}", id))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(nombre)
         }
     }
 
@@ -1713,6 +1729,15 @@ pub mod servicio {
                 ))),
             }
         }
+
+        pub fn obtener_nombre_con_id(&self, id: &i64) -> AppResult<String> {
+            return self.obtener_nombre_con_id(id);
+        }
+
+        pub fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<i64> {
+            return self.obtener_id_con_nombre(nombre);
+        }
+
         pub fn buscar(&self, busqueda: &String) -> AppResult<Vec<String>> {
             let insumos = self.repositorio.mostrar_todos()?;
             println!("1505");
@@ -1943,9 +1968,10 @@ pub mod servicio {
                 }
                 match almacen.obtener(nombre) {
                     Ok(insumo) => {
-                        let id = Ok(insumo.obtener_id())?;
-                        ingredientes_con_id.push((id, cantidad.clone()));
-                        costo += insumo.costo_por_gramos((*cantidad).into());
+                        if let Some(id) = insumo.obtener_id() {
+                            ingredientes_con_id.push((id, cantidad.clone()));
+                            costo += insumo.costo_por_gramos((*cantidad).into());
+                        };
                     }
                     Err(e) => {
                         return Err(AppError::ErrorPersonal(format!(
@@ -1959,7 +1985,7 @@ pub mod servicio {
             match negocio::Receta::nuevo(n_receta.clone(), ingredientes_con_id, costo) {
                 Ok(receta) => {
                     let nuevo = receta;
-                    self.repositorio.añadir(nuevo, almacen);
+                    self.repositorio.añadir(nuevo);
                     Ok(())
                 }
                 Err(e) => {
@@ -2038,7 +2064,7 @@ pub mod servicio {
                     }
                 }
             }
-            self.repositorio.añadir(receta_a_editar, almacen);
+            self.repositorio.añadir(receta_a_editar);
             Ok(())
         }
 
@@ -2122,15 +2148,17 @@ pub mod servicio {
         pub fn mostrar_receta(
             &self,
             busqueda: &String,
+            almacen: &ServicioDeAlmacen,
         ) -> AppResult<(String, Vec<(String, u32)>, f64)> {
             if self.existe(busqueda)? {
                 return match self.obtener(busqueda) {
                     Ok(receta) => {
-                        let conjunto = (
-                            receta.nombre().clone(),
-                            receta.ingredientes(),
-                            receta.costo(),
-                        );
+                        let mut ingredientes: Vec<(String, u32)> = Vec::new();
+                        for (id, cant) in receta.ingredientes() {
+                            let nombre = almacen.obtener_nombre_con_id(&id)?;
+                            ingredientes.push((nombre, cant));
+                        }
+                        let conjunto = (receta.nombre().clone(), ingredientes, receta.costo());
                         return Ok(conjunto);
                     }
                     Err(e) => Err(AppError::ErrorPersonal(format!(
@@ -2155,13 +2183,8 @@ pub mod servicio {
                 match self.obtener(nombre_receta) {
                     Ok(receta) => {
                         for producto in 0..cantidad {
-                            for (nombre, cant) in receta.ingredientes() {
-                                if !almacen.existe(&nombre) {
-                                    return Err(AppError::DatoInvalido(format!(
-                                        "el insumo: {}, no esta en almacen.",
-                                        nombre
-                                    )));
-                                }
+                            for (id, cant) in receta.ingredientes() {
+                                let nombre = almacen.obtener_nombre_con_id(&id)?;
                                 match almacen.obtener(&nombre) {
                                     Ok(mut insumo) => match insumo.usar(cant) {
                                         Ok(_) => continue,
