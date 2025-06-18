@@ -1,4 +1,9 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
+// INSTRUCCIONES:
+//     A: usar el operador ? para propagar errores.
+//     B: agregar mensajes de error mas explicitos.
+//     C: explicar el porque de cada funcion a nivel estructural.
+//     D:
 //
 //      PENDIENTES:
 //           fn Usar en ServicioALmacen: guardar los cambios LINEA: 1536
@@ -9,8 +14,11 @@
 //            B:  modificar la struct servicio para almacenar almacen, asi no se necesita pasar como argumento.
 //      }
 
+use std::intrinsics::breakpoint;
+
 use auxiliares::{no_es_cero, solicitar_texto};
 use loops::{reintentar, ui_buscar_insumo, ui_editar_insumo};
+use serde::de::value::BorrowedBytesDeserializer;
 
 fn main() {
     use crate::auxiliares;
@@ -21,6 +29,7 @@ fn main() {
         Ok(almacen) => almacen,
         Err(e) => panic!("Error al abrir la base de datos porque: {}", e),
     };
+
     let mut recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
         Ok(recetario) => recetario,
         Err(e) => panic!("Error al abrir la base de datos con el recetario: {}", e),
@@ -35,57 +44,33 @@ fn main() {
              \nYa se ha creado el servicio de almacen y recetas."
     );
 
+    //Creamos una funcion predeterminada que permita al usuario
+    fn reintentar_o_salir<F>(mut funcion: F) -> ()
+    where
+        F: FnMut() -> bool,
+    {
+        loop {
+            if funcion() {
+                break;
+            }
+            if cli::reintentar() {
+                continue;
+            }
+            break;
+        }
+    }
+
     loop {
-        let res = loops::menu();
+        let res = cli::menu();
         match res {
             1 => break,
-            2 => loop {
-                if loops::ui_crear_insumo(&mut servicio_de_almacen) {
-                    break;
-                }
-                if reintentar() {
-                    continue;
-                }
-                break;
-            },
-            3 => loop {
-                if loops::ui_crear_receta(&mut servicio_de_recetas, &servicio_de_almacen) {
-                    break;
-                }
-                if reintentar() {
-                    continue;
-                }
-                break;
-            },
-            4 => loop {
-                if loops::ui_buscar_insumo(&servicio_de_almacen) {
-                    break;
-                }
-                if reintentar() {
-                    continue;
-                }
-                break;
-            },
-            5 => loop {
-                if loops::ui_buscar_receta(&servicio_de_recetas) {
-                    break;
-                }
-                if reintentar() {
-                    continue;
-                }
-                break;
-            },
-            6 => loops::ver_insumos(&servicio_de_almacen),
-            7 => loops::ver_recetas(&servicio_de_recetas),
-            8 => loop {
-                if loops::ui_insumo_valor(&servicio_de_almacen) {
-                    break;
-                }
-                if reintentar() {
-                    continue;
-                }
-                break;
-            },
+            2 => reintentar_o_salir(|| cli::crear_insumo(&mut servicio_de_almacen)),
+            3 => reintentar_o_salir(|| cli::crear_receta(&mut servicio_de_recetas, &mut almacen)),
+            4 => reintentar_o_salir(|| cli::buscar_insumo(&servicio_de_almacen)),
+            5 => reintentar_o_salir(|| cli::buscar_receta(&servicio_de_recetas)),
+            6 => cli::ver_insumos(&servicio_de_almacen),
+            7 => cli::ver_recetas(&servicio_de_recetas),
+            8 => reintentar_o_salir(|| cli::valor_de_insumo(&servicio_de_almacen)),
             9 => loop {
                 if loops::ui_receta_valor(&servicio_de_recetas, &servicio_de_almacen) {
                     break;
@@ -147,23 +132,11 @@ fn main() {
     }
 }
 
-pub mod loops {
-    //1
-
-    use rusqlite::ffi::SQLITE_SYNC_DATAONLY;
-
+pub mod cli {
     use crate::auxiliares;
-    use crate::auxiliares::no_es_cero;
-    use crate::auxiliares::solicitar_texto;
-    use crate::negocio::*;
-    use crate::repositorio;
-    use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
-    use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
-    use std::io;
+    use crate::comandos;
 
-    // Dado que estamos en una cli, estaran separadas las funciones de ui, y las de cli.
-    //
-    // FUNCIONES DE UI
+    //Una pequeña funcion para imprimir el menu.
     pub fn menu() -> u32 {
         loop {
             println!(
@@ -188,7 +161,7 @@ pub mod loops {
     pub fn reintentar() -> bool {
         println!("¿Deseas volver a intentar? \n1) Si. \n2) No, volver al menú.");
         loop {
-            let res = no_es_cero();
+            let res = auxiliares::no_es_cero();
             match res {
                 1 => return true,
                 2 => return false,
@@ -196,20 +169,6 @@ pub mod loops {
                     println!("por favor responde 1: para salir o 2: para volver a intentar. ");
                     continue;
                 }
-            }
-        }
-    }
-
-    pub fn ui_crear_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
-        let insumo = describir_insumo();
-        match crear_insumo(insumo, almacen) {
-            Ok(respuesta) => {
-                println!("{}", respuesta);
-                return true;
-            }
-            Err(e) => {
-                println!("Error: {}\nAl crear el insumo.", e);
-                return false;
             }
         }
     }
@@ -227,80 +186,19 @@ pub mod loops {
         let cantidad_minima = auxiliares::no_es_cero();
         return (nombre, cantidad, cantidad_minima, costo);
     }
-
-    pub fn ui_buscar_insumo(almacen: &ServicioDeAlmacen) -> bool {
-        println!("Que insumo gustas buscar?");
-        let busqueda = solicitar_texto();
-        let resultados = buscar_insumo(almacen, &busqueda);
-        if resultados.is_empty() {
-            println!("El insumo: {}, no se ha encontrado.", busqueda);
-            return false;
-        }
-        println!("Resultados: ");
-        for resultado in resultados {
-            println!("{}", resultado);
-        }
-        return true;
-    }
-
-    pub fn ver_insumos(almacen: &ServicioDeAlmacen) {
-        println!("Buscando insumos. .. . ... .. .");
-        let resultados = ver_todos_los_insumos(almacen);
-        if resultados.is_empty() {
-            println!("No hay insumos en el almacen.");
-        } else {
-            for resultado in resultados {
-                println!("{}", resultado);
-            }
-        }
-    }
-
-    pub fn ui_insumo_valor(almacen: &ServicioDeAlmacen) -> bool {
-        println!("Que insumo buscas?");
-        let busqueda = solicitar_texto();
-        if !almacen.existe(&busqueda) {
-            println!(
-                "No se encontró el insumo: {}. \n Buscando coincidencias...",
-                &busqueda
-            );
-            let mut resultados = match almacen.buscar(&busqueda) {
-                Ok(insumos) => insumos,
-                Err(e) => {
-                    println!(
-                        "El insumo: {}, No ha sido encontrado en el almacen.",
-                        busqueda
-                    );
-                    return false;
-                }
-            };
-            if resultados.is_empty() {
-                println!("No se encontraron coincidencias.");
-                return false;
-            }
-            for resultado in resultados {
-                println!("{}", resultado);
-            }
-            return false;
-        }
-        return match almacen.mostrar_insumo(&busqueda) {
-            Ok(insumo) => {
-                println!(
-                    "Insumo: {};\n
-                    Nombre: {}.\n
-                    Cantidad actual: {}.\n
-                    Cantidad minima: {}. \n
-                    Precio por kilo: {}.",
-                    &busqueda, insumo.0, insumo.1, insumo.2, insumo.3
-                );
-                true
+    pub fn crear_insumo(almacen: &mut ServicioDeAlmacen) -> bool {
+        let insumo = describir_insumo();
+        match comandos::crear_insumo(insumo, almacen) {
+            Ok(respuesta) => {
+                println!("{}", respuesta);
+                return true;
             }
             Err(e) => {
-                println!("Error: {}.\nal buscar el insumo: {}", e, busqueda);
-                false
+                println!("Error: {}\nAl crear el insumo.", e);
+                return false;
             }
-        };
+        }
     }
-
     pub fn describir_receta(almacen: &ServicioDeAlmacen) -> (String, Vec<(String, u32)>) {
         println!("Como quieres que se llame la receta?");
         let nombre = auxiliares::solicitar_texto();
@@ -328,10 +226,9 @@ pub mod loops {
 
         return (nombre, ingredientes);
     }
-
-    pub fn ui_crear_receta(libro: &mut ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
+    pub fn crear_receta(libro: &mut ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
         let receta = describir_receta(almacen);
-        return match crear_receta(receta, almacen, libro) {
+        return match comandos::crear_receta(receta, almacen, libro) {
             Ok(info) => {
                 println!("{}", info);
                 true
@@ -343,10 +240,25 @@ pub mod loops {
         };
     }
 
-    pub fn ui_buscar_receta(libro: &ServicioDeRecetas) -> bool {
+    pub fn buscar_insumo(almacen: &ServicioDeAlmacen) -> bool {
+        println!("Que insumo gustas buscar?");
+        let busqueda = auxiliares::solicitar_texto();
+        let resultados = comandos::buscar_insumo(almacen, &busqueda);
+        if resultados.is_empty() {
+            println!("El insumo: {}, no se ha encontrado.", busqueda);
+            return false;
+        }
+        println!("Resultados: ");
+        for resultado in resultados {
+            println!("{}", resultado);
+        }
+        return true;
+    }
+
+    pub fn buscar_receta(libro: &ServicioDeRecetas) -> bool {
         println!("Que receta quieres buscar?");
-        let busqueda = &solicitar_texto();
-        let resultados = buscar_receta(libro, busqueda);
+        let busqueda = auxiliares::solicitar_texto();
+        let resultados = comandos::buscar_receta(libro, &busqueda);
         if resultados.is_empty() {
             println!("No se encontraron coincidencias.");
             return false;
@@ -358,9 +270,21 @@ pub mod loops {
         return true;
     }
 
+    pub fn ver_insumos(almacen: &ServicioDeAlmacen) {
+        println!("Buscando insumos. .. . ... .. .");
+        let resultados = comandos::ver_todos_los_insumos(almacen);
+        if resultados.is_empty() {
+            println!("No hay insumos en el almacen.");
+        } else {
+            for resultado in resultados {
+                println!("{}", resultado);
+            }
+        }
+    }
+
     pub fn ver_recetas(libro: &ServicioDeRecetas) {
         println!("Buscando recetas. .. ... . . . .. .");
-        let resultados = ver_todos_las_recetas(libro);
+        let resultados = comandos::ver_todos_las_recetas(libro);
         if resultados.is_empty() {
             println!("El libro de recetas esta vacio.");
         } else {
@@ -369,6 +293,121 @@ pub mod loops {
             }
         }
     }
+
+    pub fn valor_de_insumo(almacen: &ServicioDeAlmacen) -> bool {
+        println!("Que insumo gustas buscar?");
+        let insumo = auxiliares::solicitar_texto();
+        match comandos::valor_de_insumo(&insumo, almacen) {
+            Ok(ins) => {
+                println!(
+                    "Nombre: {}, \nCantidad: {},\nCantidad minima: {}, \nPrecio por kilo: ${}, \nId: {}",
+                    ins.1, ins.2, ins.3, ins.4, ins.0
+                );
+                return true;
+            }
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        }
+    }
+}
+
+pub mod comandos {
+    use crate::negocio::{AppError, AppResult};
+    use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
+
+    pub fn crear_insumo(
+        insumo: (String, u32, u32, u32),
+        almacen: &mut ServicioDeAlmacen,
+    ) -> AppResult<String> {
+        return match almacen.añadir(insumo.0.clone(), insumo.1, insumo.2, insumo.3) {
+            Ok(_) => Ok(format!("se ha creado el insumo: {}", insumo.0)),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "Error al crear el insumo: {}, error: {}",
+                insumo.0, e
+            ))),
+        };
+    }
+
+    pub fn crear_receta(
+        receta: (String, Vec<(String, u32)>),
+        almacen: &ServicioDeAlmacen,
+        libro: &mut ServicioDeRecetas,
+    ) -> AppResult<String> {
+        return match libro.añadir(receta.0.clone(), receta.1, almacen) {
+            Ok(_) => Ok(format!("se ha creado la receta: {}", receta.0)),
+            Err(e) => Err(AppError::ErrorPersonal(format!(
+                "hubo un error al crear la receta: {}, error: {}",
+                receta.0, e
+            ))),
+        };
+    }
+
+    pub fn buscar_insumo(almacen: &ServicioDeAlmacen, busqueda: &String) -> Vec<String> {
+        return match almacen.buscar(busqueda) {
+            Ok(resultados) => resultados,
+            Err(e) => {
+                let mut resultados: Vec<String> = Vec::new();
+                resultados.push(e.to_string());
+                resultados
+            }
+        };
+    }
+
+    pub fn buscar_receta(libro: &ServicioDeRecetas, busqueda: &String) -> Vec<String> {
+        return match libro.buscar(busqueda) {
+            Ok(res) => res,
+            Err(e) => {
+                let mut res = Vec::new();
+                res.push(e.to_string());
+                return res;
+            }
+        };
+    }
+
+    pub fn ver_todos_los_insumos(almacen: &ServicioDeAlmacen) -> Vec<String> {
+        return match almacen.mostrar_todos() {
+            Ok(resultados) => resultados,
+            Err(e) => {
+                let mut resultados: Vec<String> = Vec::new();
+                resultados.push(e.to_string());
+                resultados
+            }
+        };
+    }
+    pub fn ver_todos_las_recetas(libro: &ServicioDeRecetas) -> Vec<String> {
+        return match libro.mostrar_todos() {
+            Ok(res) => res,
+            Err(e) => {
+                let mut resultado = Vec::new();
+                resultado.push(e.to_string());
+                return resultado;
+            }
+        };
+    }
+
+    pub fn valor_de_insumo(
+        busqueda: &String,
+        almacen: &ServicioDeAlmacen,
+    ) -> AppResult<(String, String, u32, u32, u32)> {
+        return almacen.mostrar_insumo(busqueda)?;
+    }
+}
+
+pub mod loops {
+    //1
+
+    use crate::auxiliares::no_es_cero;
+    use crate::auxiliares::solicitar_texto;
+    use crate::negocio::*;
+    use crate::repositorio;
+    use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
+    use rusqlite::ffi::SQLITE_SYNC_DATAONLY;
+    use std::arch::x86_64::_XCR_XFEATURE_ENABLED_MASK;
+    use std::io;
+
+    // Dado que estamos en una cli, estaran separadas las funciones de ui, y las de cl
 
     pub fn ui_receta_valor(libro: &ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
         println!("Que receta gustas buscar?");
@@ -632,33 +671,6 @@ pub mod loops {
     }
 
     //   FUNCIONES DE CLI
-    //
-    pub fn crear_insumo(
-        insumo: (String, u32, u32, u32),
-        almacen: &mut ServicioDeAlmacen,
-    ) -> AppResult<String> {
-        return match almacen.añadir(insumo.0.clone(), insumo.1, insumo.2, insumo.3) {
-            Ok(_) => Ok(format!("se ha creado el insumo: {}", insumo.0)),
-            Err(e) => Err(AppError::ErrorPersonal(format!(
-                "Error al crear el insumo: {}, error: {}",
-                insumo.0, e
-            ))),
-        };
-    }
-
-    pub fn crear_receta(
-        receta: (String, Vec<(String, u32)>),
-        almacen: &ServicioDeAlmacen,
-        libro: &mut ServicioDeRecetas,
-    ) -> AppResult<String> {
-        return match libro.añadir(receta.0.clone(), receta.1, almacen) {
-            Ok(_) => Ok(format!("se ha creado la receta: {}", receta.0)),
-            Err(e) => Err(AppError::ErrorPersonal(format!(
-                "hubo un error al crear la receta: {}, error: {}",
-                receta.0, e
-            ))),
-        };
-    }
 
     pub fn producir_recetas(
         almacen: &mut ServicioDeAlmacen,
@@ -674,56 +686,6 @@ pub mod loops {
             ))),
         };
     }
-
-    pub fn buscar_insumo(almacen: &ServicioDeAlmacen, busqueda: &String) -> Vec<String> {
-        return match almacen.buscar(busqueda) {
-            Ok(resultados) => resultados,
-            Err(e) => {
-                let mut resultados: Vec<String> = Vec::new();
-                resultados.push(e.to_string());
-                resultados
-            }
-        };
-    }
-
-    pub fn buscar_receta(libro: &ServicioDeRecetas, busqueda: &String) -> Vec<String> {
-        return match libro.buscar(busqueda) {
-            Ok(res) => res,
-            Err(e) => {
-                let mut res = Vec::new();
-                res.push(e.to_string());
-                return res;
-            }
-        };
-    }
-    pub fn ver_todos_los_insumos(almacen: &ServicioDeAlmacen) -> Vec<String> {
-        return match almacen.mostrar_todos() {
-            Ok(resultados) => resultados,
-            Err(e) => {
-                let mut resultados: Vec<String> = Vec::new();
-                resultados.push(e.to_string());
-                resultados
-            }
-        };
-    }
-    pub fn ver_todos_las_recetas(libro: &ServicioDeRecetas) -> Vec<String> {
-        return match libro.mostrar_todos() {
-            Ok(res) => res,
-            Err(e) => {
-                let mut resultado = Vec::new();
-                resultado.push(e.to_string());
-                return resultado;
-            }
-        };
-    }
-
-    pub fn mostrar_insumo(
-        almacen: &ServicioDeAlmacen,
-        busqueda: &String,
-    ) -> AppResult<(String, u32, u32, u32)> {
-        almacen.mostrar_insumo(busqueda)
-    }
-
     pub fn mostrar_receta(
         libro: &ServicioDeRecetas,
         busqueda: &String,
@@ -869,13 +831,16 @@ pub mod negocio {
     //pensemos en como vamos a lidiar con los errores de validacion, podriamos llamar al validador
     //antes que crear la instancia. o devolver AppError para casi todo :u
     //
-
+    //
+    //
     use chrono::{DateTime, TimeZone};
     use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
     use rusqlite::Error as SqlError;
     use thiserror::Error;
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
+
+    //ERRORES:
 
     #[derive(Debug, Error)]
     pub enum AppError {
@@ -890,13 +855,15 @@ pub mod negocio {
         DbError(#[from] SqlError),
     }
 
+    // Encapsulamos la gestion de errores de la aplicacion.
     pub type AppResult<T> = Result<T, AppError>;
 
-    //Estructuras de datos que se usaran en Virtualizacion.
+    //Estructuras y reglas de datos del negocio
+
+    //INSUMOS:
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Insumo {
-        //Simulacion de un insumo
-        id: Option<i64>,
+        id: String,
         nombre: String,
         cantidad: u32,
         precio: u32,
@@ -940,7 +907,7 @@ pub mod negocio {
             };
 
             Ok(Insumo {
-                id: None,
+                id: Uuid::new_v4().to_string(),
                 nombre,
                 cantidad,
                 precio,
@@ -949,14 +916,14 @@ pub mod negocio {
         }
 
         pub fn crear_desde_db(
-            id: i64,
+            id: String,
             nombre: String,
             cantidad: u32,
             cantidad_minima: u32,
             precio: u32,
         ) -> Result<Self, rusqlite::Error> {
             Ok(Insumo {
-                id: Some(id),
+                id,
                 nombre,
                 cantidad,
                 cantidad_minima,
@@ -977,18 +944,19 @@ pub mod negocio {
         pub fn alerta_cantidad_minima(&self) -> bool {
             self.cantidad <= self.cantidad_minima
         }
-        pub fn obtener_id(&self) -> Option<i64> {
-            self.id
+        pub fn obtener_id(&self) -> String {
+            self.id.clone()
         }
 
-        pub fn actualizar_nombre(&mut self, nombre: &String) -> AppResult<()> {
-            if nombre.is_empty() {
+        pub fn actualizar_nombre(&mut self, nombre: String) -> AppResult<()> {
+            if !nombre.is_empty() {
+                self.nombre = nombre;
+                Ok(())
+            } else {
                 return Err(AppError::DatoInvalido(
-                    "El nuevo nombre esta vacio.".to_string(),
+                    "El nuevo nombre esta vacio".to_string(),
                 ));
             }
-            self.nombre = nombre.clone();
-            Ok(())
         }
 
         pub fn actualizar_cantidad(&mut self, cantidad: u32) -> AppResult<()> {
@@ -1168,6 +1136,10 @@ pub mod negocio {
 }
 
 pub mod repositorio {
+
+    //REPOSITORIO: Aqui se desglosa la logica para la persistencia de datos.
+    // Usamos Traits para abstraer la implimentacion de estas funciones y sea una parte modular.
+
     use crate::{
         negocio::{self, AppError, AppResult, Insumo, Receta},
         servicio::*,
@@ -1202,6 +1174,7 @@ pub mod repositorio {
             )?;
             Ok(RecetarioEnMemoria { conexion })
         }
+
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
             let id: i64 = self
                 .conexion
@@ -1325,6 +1298,8 @@ pub mod repositorio {
         fn obtener(&self, busqueda: &str) -> AppResult<negocio::Insumo>;
         fn mostrar_todos(&self) -> AppResult<Vec<String>>;
         fn obtener_todos(&self) -> AppResult<Vec<Insumo>>;
+        fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<String>;
+        fn obtener_nombre_con_id(&self, nombre: &String) -> AppResult<String>;
     }
 
     pub struct AlmacenEnMemoria {
@@ -1333,30 +1308,22 @@ pub mod repositorio {
 
     impl AlmacenEnMemoria {
         pub fn nuevo(ruta: &str) -> AppResult<Self> {
-            println!("LLegue a la linea 1314, nuevo, almacen en memoria.");
-            let conn = match Connection::open(ruta) {
-                Ok(conex) => conex,
-                Err(e) => {
-                    println!("Error al abrir la ruta: {}, \nError: {}", ruta, e);
-                    panic!("error en la conexion.");
-                }
-            };
-            println!("LLegue a 1322, voy a crear la tabla");
+            let conn = Connection::open(ruta)?;
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS insumos (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre TEXT NOT NULL,
+                    id TEXT NOT NULL UNIQUE,
+                    nombre TEXT NOT NULL UNIQUE,
                     cantidad INTEGER NOT NULL,
                     cantidad_minima INTEGER NOT NULL,
                     precio INTEGER NOT NULL
                 )",
                 [],
             )?;
-            println!("Logre crear la tabla.");
             Ok(AlmacenEnMemoria { conexion: conn })
         }
-        pub fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<i64> {
-            let id: i64 = self
+
+        pub fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
+            let id: String = self
                 .conexion
                 .query_row(
                     "SELECT id FROM insumos WHERE nombre = ?",
@@ -1370,10 +1337,10 @@ pub mod repositorio {
                     )),
                     _ => AppError::DbError(e),
                 })?;
-            println!("1350");
             Ok(id)
         }
-        pub fn obtener_nombre_con_id(&self, id: &i64) -> AppResult<String> {
+
+        pub fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
             let nombre = self
                 .conexion
                 .query_row(
@@ -1392,11 +1359,45 @@ pub mod repositorio {
     }
 
     impl Bodega for AlmacenEnMemoria {
+        fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
+            let nombre = self
+                .conexion
+                .query_row(
+                    "SELECT nombre FROM insumos WHERE id = ?",
+                    params![id],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo con id: {}", id))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(nombre)
+        }
+        fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
+            let id: String = self
+                .conexion
+                .query_row(
+                    "SELECT id FROM insumos WHERE nombre = ?",
+                    params![nombre],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(format!(
+                        "En obtener id: No se encontro el insumo: {}",
+                        nombre
+                    )),
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(id)
+        }
         fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()> {
             self.conexion.execute(
-                "INSERT INTO insumos (nombre, cantidad, cantidad_minima, precio)
-                VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO insumos (id, nombre, cantidad, cantidad_minima, precio)
+                VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
+                    insumo.obtener_id(),
                     insumo.nombre(),
                     insumo.obtener_cantidad(),
                     insumo.obtener_cantidad_minima(),
@@ -1421,10 +1422,8 @@ pub mod repositorio {
             Ok(())
         }
 
-        fn obtener(&self, busqueda: &str) -> AppResult<negocio::Insumo> {
-            println!("1387");
+        fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo> {
             let id = self.obtener_id_con_nombre(busqueda)?;
-            println!("1389");
             self.conexion
                 .query_row(
                     "SELECT id, nombre, cantidad, cantidad_minima, precio
@@ -1450,13 +1449,10 @@ pub mod repositorio {
         }
 
         fn mostrar_todos(&self) -> AppResult<Vec<String>> {
-            println!("1410");
             let mut accion = self
                 .conexion
                 .prepare("SELECT nombre FROM insumos ORDER BY nombre")?;
-            println!("1414");
             let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
-            println!("1416");
             let mut nombres = Vec::new();
             for nombre in nombres_iter {
                 nombres.push(nombre?);
@@ -1488,6 +1484,9 @@ pub mod repositorio {
 }
 pub mod servicio {
 
+    //SERVICIO: proporciona funciones usables por los comandos para conectarse a repositorio y verificar las existencias de productos antes de la creacion de una.
+    // Además provee informacion de consulta para los comandos.
+    //
     use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
     use crate::repositorio::{Bodega, RecetasEnMemoria};
     use strsim::levenshtein;
@@ -1500,6 +1499,21 @@ pub mod servicio {
         pub fn nuevo(repo: Box<dyn Bodega>) -> Self {
             ServicioDeAlmacen { repositorio: repo }
         }
+
+        pub fn reinsertar(
+            &mut self,
+            id: String,
+            nombre: String,
+            cantidad: u32,
+            cantidad_minima: u32,
+            precio: u32,
+        ) -> AppResult<()> {
+            let insumo =
+                negocio::Insumo::crear_desde_db(id, nombre, cantidad, cantidad_minima, precio);
+            self.repositorio.añadir(insumo)?;
+            Ok(())
+        }
+
         pub fn añadir(
             &mut self,
             nombre: String,
@@ -1508,53 +1522,32 @@ pub mod servicio {
             precio: u32,
         ) -> AppResult<()> {
             if nombre.is_empty() {
-                return Err(AppError::DatoInvalido(
-                    "el nombre no puede estar vacio".to_string(),
-                ));
+                return Err(AppError::DatoInvalido("El nombre esta vacio".to_string()));
             }
-            if self.existe(&nombre) {
-                return Err(AppError::DatoInvalido(format!(
-                    "El insumo: {}, ya existe.",
-                    nombre
-                )));
-            }
-            if precio == 0 {
-                return Err(AppError::DatoInvalido(
-                    "el costo no puede ser cero.".to_string(),
-                ));
-            }
-            if cantidad_minima == 0 || cantidad_minima > cantidad {
-                return Err(AppError::DatoInvalido(
-                    "la cantidad minima no deberia ser ni cero, ni mayor a la cantidad actual."
-                        .to_string(),
-                ));
-            }
-            match negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima) {
-                Ok(insumo) => {
-                    let mut nuevo_insumo = insumo;
-                    println!("Guardando el insumo");
-                    self.repositorio.añadir(nuevo_insumo)?;
-                    println!("Se guardo el insumo");
-                    Ok(())
+            match self.existe(&nombre) {
+                Ok(_) => {
+                    return Err(AppError::DatoInvalido(format!(
+                        "El insumo: {}, ya existe.",
+                        nombre
+                    )));
                 }
-                Err(e) => Err(AppError::ErrorPersonal(format!(
-                    "ocurrio un problema al intentar crear el insumo: {}",
-                    e
-                ))),
+                Err(_) => (),
             }
+            let insumo = negocio::Insumo::nuevo(nombre.clone(), cantidad, precio, cantidad_minima)?;
+            self.repositorio.añadir(insumo)?;
+            Ok(())
         }
 
-        pub fn obtener_nombre_con_id(&self, id: &i64) -> AppResult<String> {
-            return self.obtener_nombre_con_id(id);
+        pub fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
+            return self.repositorio.obtener_nombre_con_id(id);
         }
 
-        pub fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<i64> {
-            return self.obtener_id_con_nombre(nombre);
+        pub fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<String> {
+            return self.repositorio.obtener_id_con_nombre(nombre);
         }
 
         pub fn buscar(&self, busqueda: &String) -> AppResult<Vec<String>> {
             let insumos = self.repositorio.mostrar_todos()?;
-            println!("1505");
             let mut resultados: Vec<String> = Vec::new();
             resultados = insumos
                 .clone()
@@ -1577,108 +1570,59 @@ pub mod servicio {
             }
         }
 
-        pub fn existe(&self, busqueda: &String) -> bool {
-            let mut lista: Vec<String>;
-            match self.repositorio.mostrar_todos() {
-                Ok(i) => lista = i,
-                Err(e) => return false,
-            }
+        pub fn existe(&self, busqueda: &String) -> AppResult<()> {
+            let lista = self.mostrar_todos()?;
             if lista.contains(busqueda) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-        pub fn eliminar(&mut self, insumo: &str) -> AppResult<()> {
-            if self.existe(&insumo.to_string()) {
-                self.repositorio.eliminar(insumo);
                 return Ok(());
             } else {
                 return Err(AppError::DatoInvalido(format!(
-                    "el insumo: {}, no existe.",
-                    insumo
+                    "El insumo: {}, no existe en el almacen."
                 )));
             }
         }
+
+        pub fn eliminar(&mut self, insumo: &String) -> AppResult<()> {
+            self.existe(insumo)?;
+            self.repositorio.eliminar(insumo)?;
+            Ok(())
+        }
+
         pub fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo> {
-            if self.existe(busqueda) {
-                println!("1559");
-                return match self.repositorio.obtener(busqueda) {
-                    Ok(mut insumo) => Ok(insumo),
-                    Err(e) => {
-                        return Err(AppError::ErrorPersonal(format!(
-                            "error 1564 al obtener el insumo: {}",
-                            busqueda
-                        )));
-                    }
-                };
-            }
-
-            // IMPORTANTE GUARDAR LOS CAMBIOS DEL CLON   }
-            return Err(AppError::ErrorPersonal(format!(
-                "No existe el insumo: {}",
-                busqueda
-            )));
+            self.existe(busqueda)?;
+            Ok(self.repositorio.obtener(busqueda)?)
         }
 
-        //NTE GUARDAR LOS CAMBIOS DEL s
         pub fn usar(&mut self, busqueda: &String, cantidad: u32) -> AppResult<u32> {
-            if !self.existe(busqueda) {
-                return Err(AppError::DatoInvalido(format!(
-                    "No existe el insumo: {}, en el almacen.",
-                    busqueda
-                )));
-            }
-            match self.obtener(busqueda) {
-                Ok(mut insumo) => {
-                    let cantidad_nueva: u32;
-                    insumo.usar(cantidad);
-                    let cantidad_nueva = insumo.obtener_cantidad();
-                    self.eliminar(busqueda)?;
-                    self.añadir(
-                        insumo.nombre().clone(),
-                        cantidad,
-                        insumo.obtener_cantidad_minima(),
-                        insumo.obtener_precio(),
-                    )?;
-                    return Ok(cantidad_nueva);
-                }
-                Err(e) => Err(AppError::ErrorPersonal(format!(
-                    "Error al obtener el insumo: {}. \nError: {}",
-                    busqueda, e
-                ))),
-            }
+            let mut insumo = self.obtener(busqueda)?;
+
+            insumo.usar(cantidad);
+            self.eliminar(busqueda)?;
+            let cantidad_nueva = insumo.obtener_cantidad();
+            self.añadir(
+                insumo.nombre().clone(),
+                cantidad,
+                insumo.obtener_cantidad_minima(),
+                insumo.obtener_precio(),
+            )?;
+            Ok(cantidad_nueva)
         }
+
         pub fn mostrar_todos(&self) -> AppResult<Vec<String>> {
             return self.repositorio.mostrar_todos();
         }
 
         pub fn mostrar_insumo(&self, busqueda: &String) -> AppResult<(String, u32, u32, u32)> {
-            if self.existe(busqueda) {
-                return match self.obtener(busqueda) {
-                    Ok(res) => {
-                        let insumo = res;
-                        let conjunto = (
-                            insumo.nombre().clone(),
-                            insumo.obtener_cantidad(),
-                            insumo.obtener_cantidad_minima(),
-                            insumo.obtener_precio(),
-                        );
-                        return Ok(conjunto);
-                    }
-                    Err(e) => Err(AppError::ErrorPersonal(format!(
-                        "Error1615 al obtener el insumo: {} \nError: {}",
-                        busqueda, e
-                    ))),
-                };
-            } else {
-                return Err(AppError::DatoInvalido(format!(
-                    "no se encontro el insumo: {}",
-                    busqueda
-                )));
-            }
+            let insumo = self.obtener(busqueda)?;
+            let insumo_tupla = (
+                insumo.nombre().clone(),
+                insumo.obtener_cantidad(),
+                insumo.obtener_cantidad_minima(),
+                insumo.obtener_precio(),
+            );
+
+            Ok(insumo_tupla)
         }
+
         pub fn editar_insumo(
             &mut self,
             insumo: &String,
@@ -1687,24 +1631,7 @@ pub mod servicio {
             cantidad_minima: Option<u32>,
             precio: Option<u32>,
         ) -> AppResult<()> {
-            if !self.existe(insumo) {
-                return Err(AppError::DatoInvalido(format!(
-                    "El insumo: {}, no esta en el almacen.",
-                    insumo
-                )));
-            }
-            let mut insumo_a_editar: negocio::Insumo;
-            match self.obtener(insumo) {
-                Ok(i) => insumo_a_editar = i.clone(),
-                Err(e) => {
-                    return Err(AppError::ErrorPersonal(format!(
-                        "Error: {}\nAl obtener el insumo: {}",
-                        e, insumo
-                    )));
-                }
-            }
-
-            let mut clave = insumo.clone();
+            let mut insumo_a_editar = self.obtener(insumo)?;
 
             if let Some(mut nuevo_nombre) = nombre {
                 if nuevo_nombre.is_empty() {
@@ -1722,7 +1649,6 @@ pub mod servicio {
                     self.repositorio.eliminar(insumo)?;
                 }
                 insumo_a_editar.actualizar_nombre(&nuevo_nombre);
-                clave = nuevo_nombre;
             }
 
             if let Some(cant) = cantidad {
