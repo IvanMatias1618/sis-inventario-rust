@@ -76,8 +76,11 @@ fn main() -> Result<(), crate::negocio::AppError> {
             12 => reintentar_o_salir(|| {
                 cli::producir_receta(&mut servicio_de_almacen, &servicio_de_recetas)
             }),
-            13 => reintentar_o_salir(|| cli::editar_insumo(&mut servicio_de_almacen)),
-            14 => reintentar_o_salir(|| {
+            13 => reintentar_o_salir(|| {
+                cli::ingredientes_en_recetas(&servicio_de_recetas, &servicio_de_almacen)
+            }),
+            14 => reintentar_o_salir(|| cli::editar_insumo(&mut servicio_de_almacen)),
+            15 => reintentar_o_salir(|| {
                 cli::editar_receta(&mut servicio_de_recetas, &servicio_de_almacen)
             }),
             _ => {
@@ -110,11 +113,11 @@ pub mod cli {
                  \n6) Ver todos los insumos.          7) Ver todas las recetas.
                  \n8) Ver el valor de un Insumo.      9) Ver el valor de una Receta.
                  \n10) Eliminar Insumo.              11) Eliminar Receta.
-                 \n              12) Producir Receta.
-                 \n13) Editar Insumo.                14) Editar Receta."
+                 \n12) Producir Receta.              13) Ingredientes en recetas.
+                 \n14) Editar Insumo.                15) Editar Receta."
             );
             let res = no_es_cero();
-            if res > 30 {
+            if res > 15 {
                 println!("por favor elije una respuesta dentro de las opciones.");
                 continue;
             }
@@ -135,6 +138,28 @@ pub mod cli {
             }
         }
     }
+
+    pub fn ingredientes_en_recetas(libro: &ServicioDeRecetas, almacen: &ServicioDeAlmacen) -> bool {
+        println!("Cual insumo gustas buscar en las recetas?");
+        let insumo = solicitar_texto();
+        match comandos::insumo_en_recetas(libro, almacen, &insumo) {
+            Ok(res) => {
+                if res.is_empty() {
+                    println!("No se encontraron recetas con el insumo: {}", insumo);
+                    return false;
+                }
+                for receta in res {
+                    println!("Receta: {}", receta);
+                }
+                return true;
+            }
+            Err(e) => {
+                println!("{}", e);
+                return false;
+            }
+        }
+    }
+
     pub fn describir_insumo() -> (String, u32, u32, u32) {
         println!("Hola! que nombre quieres para tu insumo?:");
         let nombre = solicitar_texto();
@@ -577,6 +602,16 @@ pub mod comandos {
     pub fn eliminar_insumo(almacen: &mut ServicioDeAlmacen, busqueda: &String) -> AppResult<()> {
         almacen.eliminar(busqueda)?;
         Ok(())
+    }
+
+    pub fn insumo_en_recetas(
+        libro: &ServicioDeRecetas,
+        almacen: &ServicioDeAlmacen,
+        insumo: &String,
+    ) -> AppResult<Vec<String>> {
+        almacen.existe(insumo)?;
+        let id = almacen.obtener_id_con_nombre(insumo)?;
+        return libro.insumo_en_recetas(insumo);
     }
 }
 
@@ -1082,6 +1117,7 @@ pub mod repositorio {
                     _ => AppError::DbError(e),
                 })
         }
+
         fn listar(&self) -> AppResult<Vec<String>> {
             let mut accion = self
                 .conexion
@@ -1102,10 +1138,25 @@ pub mod repositorio {
             }
             Ok(recetas)
         }
+        fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>> {
+            let mut res: Vec<String> = Vec::new();
+            let mut accion = self
+                .conexion
+                .prepare("SELECT receta_id FROM ingredientes_en_receta WHERE receta_id = ?")?;
+            let mut filas = accion.query(params![insumo_id])?;
+
+            while let Some(fila_res) = filas.next()? {
+                let fila = fila_res;
+                let receta_id: String = fila.get(0)?;
+                res.push(receta_id);
+            }
+            Ok(res)
+        }
     }
 
     pub trait RecetasEnMemoria {
         fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()>;
+        fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>>;
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String>;
         fn añadir(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn eliminar(&self, nombre: &str) -> AppResult<()>;
@@ -1676,6 +1727,9 @@ pub mod servicio {
                 }
             }
             Ok(())
+        }
+        pub fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>> {
+            return self.repositorio.insumo_en_recetas(insumo_id);
         }
     }
 }
