@@ -1,32 +1,33 @@
 //Hola :3 Cualquier nota sera bien recibida por acá.
 // INSTRUCCIONES:
-//     A: usar el operador ? para propagar errores.
-//     B: agregar mensajes de error mas explicitos.
-//     C: explicar el porque de cada funcion a nivel estructural.
-//     D:
+// 1) CONSULTA: agregar consulta de insumo x en recetas?
+// 2) TAREA: al editar receta se sigue quedando el mismo nombre anterior. (funcion editar: linea 1539)
+// 3) TAREA: eliminar recetas si sus insumos se eliminaron.
 //
-//      PENDIENTES:
-//           fn Usar en ServicioALmacen: guardar los cambios LINEA: 1536
+// A) EMPEZAR A EXPONER ENDPOINTS.
 //
-//      ) refinar pequeños ajustes varios: {
 //
-//            A: usar el operador ? para reducir verbosidad.
-//            B:  modificar la struct servicio para almacenar almacen, asi no se necesita pasar como argumento.
-//      }
+use negocio::AppError;
 
-fn main() {
+fn main() -> Result<(), crate::negocio::AppError> {
     use crate::cli;
     use crate::repositorio;
     use crate::servicio;
 
     let mut almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
         Ok(almacen) => almacen,
-        Err(e) => panic!("Error al abrir la base de datos porque: {}", e),
+        Err(e) => {
+            println!("Error al abrir la base de datos porque: {}", e);
+            return Err(e);
+        }
     };
 
     let mut recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
         Ok(recetario) => recetario,
-        Err(e) => panic!("Error al abrir la base de datos con el recetario: {}", e),
+        Err(e) => {
+            println!("Error al abrir la base de datos con el recetario: {}", e);
+            return Err(e);
+        }
     };
 
     println!("almacen cargado");
@@ -79,11 +80,18 @@ fn main() {
             14 => reintentar_o_salir(|| {
                 cli::editar_receta(&mut servicio_de_recetas, &servicio_de_almacen)
             }),
-            _ => loop {
-                println!("No soy un chihuahua ! \n si soy un chihuahua");
-            },
+            _ => {
+                for chihua in 0..100 {
+                    println!("No soy un chihuahua ! \n si soy un chihuahua");
+                    println!("Pero si te gustan los chihuahuas?");
+                    return Err(AppError::DatoInvalido(format!(
+                        "'... Se va corriendo como conejito... '"
+                    )));
+                }
+            }
         }
     }
+    return Ok(());
 }
 
 pub mod cli {
@@ -978,6 +986,21 @@ pub mod repositorio {
     }
 
     impl RecetasEnMemoria for RecetarioEnMemoria {
+        fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()> {
+            let transaccion = self.conexion.transaction()?;
+            transaccion.execute(
+                "UPDATE recetas SET nombre = ?1, costo = ?2 WHERE id = ?3",
+                params![receta.nombre(), receta.costo(), receta.obtener_id()],
+            )?;
+            for (insumo, cantidad) in &receta.ingredientes() {
+                transaccion.execute(
+                    "UPDATE ingredientes_en_receta SET ingrediente_id = ?1, cantidad = ?2 WHERE receta_id = ?3",
+                    params![insumo, cantidad, receta.obtener_id()],
+                )?;
+            }
+            transaccion.commit()?;
+            Ok(())
+        }
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
             let id: String = self
                 .conexion
@@ -998,15 +1021,14 @@ pub mod repositorio {
             let transaccion = self.conexion.transaction()?;
 
             transaccion.execute(
-                "INSERT INTO recetas (nombre, costo) VALUES (?1, ?2)",
-                params![receta.nombre(), receta.costo(),],
+                "INSERT INTO recetas (id, nombre, costo) VALUES (?1, ?2, ?3)",
+                params![receta.obtener_id(), receta.nombre(), receta.costo(),],
             )?;
-            let receta_id = transaccion.last_insert_rowid();
             for (insumo, cantidad) in &receta.ingredientes() {
                 transaccion.execute(
                     "INSERT INTO ingredientes_en_receta (receta_id, ingrediente_id, cantidad)
                     VALUES (?1, ?2, ?3)",
-                    params![receta_id.clone(), insumo, cantidad,],
+                    params![receta.obtener_id(), insumo, cantidad,],
                 )?;
             }
             transaccion.commit()?;
@@ -1039,7 +1061,6 @@ pub mod repositorio {
                 let (insumo_id, cantidad) = ingrediente_result?;
                 ingredientes.push((insumo_id, cantidad));
             }
-            println!("1269");
             self.conexion
                 .query_row(
                     "SELECT id, nombre, costo FROM recetas WHERE id = ?",
@@ -1062,7 +1083,6 @@ pub mod repositorio {
                 })
         }
         fn listar(&self) -> AppResult<Vec<String>> {
-            println!("1292");
             let mut accion = self
                 .conexion
                 .prepare("SELECT nombre FROM recetas ORDER BY nombre")?;
@@ -1085,6 +1105,7 @@ pub mod repositorio {
     }
 
     pub trait RecetasEnMemoria {
+        fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String>;
         fn añadir(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn eliminar(&self, nombre: &str) -> AppResult<()>;
@@ -1095,12 +1116,14 @@ pub mod repositorio {
 
     pub trait Bodega {
         fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()>;
-        fn eliminar(&self, nombre: &str) -> AppResult<()>;
+        fn eliminar(&self, nombre: &String) -> AppResult<()>;
         fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo>;
         fn mostrar_todos(&self) -> AppResult<Vec<String>>;
         fn obtener_todos(&self) -> AppResult<Vec<Insumo>>;
         fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<String>;
         fn obtener_nombre_con_id(&self, nombre: &String) -> AppResult<String>;
+        fn usar_insumo(&self, cantidad: u32, id: &String) -> AppResult<()>;
+        fn editar_insumo(&self, insumo: negocio::Insumo) -> AppResult<()>;
     }
 
     pub struct AlmacenEnMemoria {
@@ -1122,44 +1145,22 @@ pub mod repositorio {
             )?;
             Ok(AlmacenEnMemoria { conexion: conn })
         }
-
-        pub fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
-            let id: String = self
-                .conexion
-                .query_row(
-                    "SELECT id FROM insumos WHERE nombre = ?",
-                    params![nombre],
-                    |fila| fila.get(0),
-                )
-                .map_err(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(format!(
-                        "En obtener id: No se encontro el insumo: {}",
-                        nombre
-                    )),
-                    _ => AppError::DbError(e),
-                })?;
-            Ok(id)
-        }
-
-        pub fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
-            let nombre = self
-                .conexion
-                .query_row(
-                    "SELECT nombre FROM insumos WHERE id = ?",
-                    params![id],
-                    |fila| fila.get(0),
-                )
-                .map_err(|e| match e {
-                    rusqlite::Error::QueryReturnedNoRows => {
-                        AppError::DatoInvalido(format!("No se encontro el insumo con id: {}", id))
-                    }
-                    _ => AppError::DbError(e),
-                })?;
-            Ok(nombre)
-        }
     }
 
     impl Bodega for AlmacenEnMemoria {
+        fn usar_insumo(&self, nueva_cantidad: u32, id: &String) -> AppResult<()> {
+            let columnas_afectadas = self.conexion.execute(
+                "UPDATE insumos SET cantidad = ?1 WHERE id = ?2",
+                params![nueva_cantidad, id],
+            )?;
+            if columnas_afectadas == 0 {
+                return Err(AppError::DatoInvalido(format!(
+                    "No se encontro el insumo con ID {} para actualizar la cantidad del insumo.",
+                    id
+                )));
+            }
+            Ok(())
+        }
         fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
             let nombre = self
                 .conexion
@@ -1208,8 +1209,26 @@ pub mod repositorio {
             let clave = self.conexion.last_insert_rowid();
             Ok(())
         }
+
+        fn editar_insumo(&self, insumo: negocio::Insumo) -> AppResult<()> {
+            let afectados = self.conexion.execute(
+                "UPDATE insumos SET nombre = ?1, cantidad = ?2, cantidad_minima = ?3, precio = ?4 WHERE id = ?5",
+                params![insumo.nombre(),
+                insumo.obtener_cantidad(),
+                insumo.obtener_cantidad_minima(),
+                insumo.obtener_precio(),
+                insumo.obtener_id()],
+            )?;
+            if afectados == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "No se guardaron los cambios en: {}",
+                    insumo.nombre()
+                )));
+            }
+            Ok(())
+        }
         // cambiar nombre por id, y remover id del cuerpo
-        fn eliminar(&self, nombre: &str) -> AppResult<()> {
+        fn eliminar(&self, nombre: &String) -> AppResult<()> {
             let id = self.obtener_id_con_nombre(nombre)?;
             let funciono = self
                 .conexion
@@ -1397,16 +1416,9 @@ pub mod servicio {
         pub fn usar(&mut self, busqueda: &String, cantidad: u32) -> AppResult<u32> {
             let mut insumo = self.obtener(busqueda)?;
 
-            insumo.usar(cantidad);
-            self.eliminar(busqueda)?;
-            let cantidad_nueva = insumo.obtener_cantidad();
-            self.añadir(
-                insumo.nombre().clone(),
-                cantidad,
-                insumo.obtener_cantidad_minima(),
-                insumo.obtener_precio(),
-            )?;
-            Ok(cantidad_nueva)
+            self.repositorio
+                .usar_insumo(cantidad, &insumo.obtener_id())?;
+            Ok(insumo.obtener_cantidad())
         }
 
         pub fn mostrar_todos(&self) -> AppResult<Vec<String>> {
@@ -1452,9 +1464,6 @@ pub mod servicio {
                         Err(_) => (),
                     }
                 }
-                if nuevo_nombre != *insumo {
-                    self.repositorio.eliminar(insumo)?;
-                }
                 insumo_a_editar.actualizar_nombre(nuevo_nombre);
             }
 
@@ -1477,7 +1486,7 @@ pub mod servicio {
                 }
             }
 
-            self.repositorio.añadir(insumo_a_editar)?;
+            self.repositorio.editar_insumo(insumo_a_editar)?;
             Ok(())
         }
     }
@@ -1503,7 +1512,7 @@ pub mod servicio {
                         n_receta
                     )));
                 }
-                Err(e) => (),
+                Err(_) => (),
             }
             let mut costo = 0.0;
             let mut ingredientes_con_id: Vec<(String, u32)> = Vec::new();
@@ -1557,9 +1566,7 @@ pub mod servicio {
                         Err(_) => (),
                     }
                 }
-                if nuevo_nombre != *receta {
-                    self.repositorio.eliminar(&nuevo_nombre);
-                }
+
                 receta_a_editar.actualizar_nombre(nuevo_nombre.clone());
             }
             let mut costo = 0.0;
@@ -1581,7 +1588,7 @@ pub mod servicio {
                     costo += insumo.costo_por_gramos(*cantidad as f64);
                 }
             }
-            self.repositorio.añadir(receta_a_editar);
+            self.repositorio.editar_receta(receta_a_editar);
             Ok(())
         }
 
@@ -1659,11 +1666,13 @@ pub mod servicio {
         ) -> AppResult<()> {
             self.existe(nombre_receta)?;
             let receta = self.obtener(nombre_receta)?;
-            for producto in 0..cantidad {
+            for uno in 0..cantidad {
                 for (id, cant) in receta.ingredientes() {
                     let nombre = almacen.obtener_nombre_con_id(&id)?;
                     let mut insumo = almacen.obtener(&nombre)?;
-                    insumo.usar(cantidad)?;
+                    insumo.usar(cant)?;
+                    let nueva_cant = insumo.obtener_cantidad();
+                    almacen.usar(&nombre, nueva_cant)?;
                 }
             }
             Ok(())
