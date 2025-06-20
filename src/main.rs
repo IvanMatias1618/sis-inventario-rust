@@ -1,8 +1,9 @@
-//Hola :3 Cualquier nota sera bien recibida por acá.
-// INSTRUCCIONES:
 // 1) CONSULTA: agregar consulta de insumo x en recetas?
-// 2) TAREA: al editar receta se sigue quedando el mismo nombre anterior. (funcion editar: linea 1539)
-// 3) TAREA: eliminar recetas si sus insumos se eliminaron.
+// 2) TAREA: al editar receta .map_err(|e| match e{
+// rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(()format!)"No se encontro el insumo con id: {se,id s,
+// _ => AppError::DbError(())ei,gue quedando el mismo nombre anterior. (funcion editar: linea 1539)
+// 3) TAREA: eliminar recetas si?;
+//Ok(nombre) sus insumos se eliminaron.
 //
 // A) EMPEZAR A EXPONER ENDPOINTS.
 //
@@ -83,15 +84,7 @@ fn main() -> Result<(), crate::negocio::AppError> {
             15 => reintentar_o_salir(|| {
                 cli::editar_receta(&mut servicio_de_recetas, &servicio_de_almacen)
             }),
-            _ => {
-                for chihua in 0..100 {
-                    println!("No soy un chihuahua ! \n si soy un chihuahua");
-                    println!("Pero si te gustan los chihuahuas?");
-                    return Err(AppError::DatoInvalido(format!(
-                        "'... Se va corriendo como conejito... '"
-                    )));
-                }
-            }
+            _ => continue,
         }
     }
     return Ok(());
@@ -107,14 +100,16 @@ pub mod cli {
         loop {
             println!(
                 "Elije una opcion:
+
+
                  \n                1) Salir del programa.
-                 \n2) Crear Un Insumo.                3) Crear una Receta.
-                 \n4) Buscar un insumo.               5) Buscar una receta.
+                 \n2) Crear Un Insumo.                3) Crear unafn obten        \n4) Buscar un insumo.               5) Buscar una receta.
                  \n6) Ver todos los insumos.          7) Ver todas las recetas.
                  \n8) Ver el valor de un Insumo.      9) Ver el valor de una Receta.
                  \n10) Eliminar Insumo.              11) Eliminar Receta.
                  \n12) Producir Receta.              13) Ingredientes en recetas.
-                 \n14) Editar Insumo.                15) Editar Receta."
+
+fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String>;                 \n14) Editar Insumo.                15) Editar Receta."
             );
             let res = no_es_cero();
             if res > 15 {
@@ -1036,6 +1031,23 @@ pub mod repositorio {
             transaccion.commit()?;
             Ok(())
         }
+
+        fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
+            let nombre: String = self
+                .conexion
+                .query_row(
+                    "SELECT nombre FROM recetas WHERE id = ?",
+                    params![id],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo con id: {}", id))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(nombre)
+        }
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
             let id: String = self
                 .conexion
@@ -1142,7 +1154,7 @@ pub mod repositorio {
             let mut res: Vec<String> = Vec::new();
             let mut accion = self
                 .conexion
-                .prepare("SELECT receta_id FROM ingredientes_en_receta WHERE receta_id = ?")?;
+                .prepare("SELECT receta_id FROM ingredientes_en_receta WHERE ingrediente_id = ?")?;
             let mut filas = accion.query(params![insumo_id])?;
 
             while let Some(fila_res) = filas.next()? {
@@ -1158,6 +1170,7 @@ pub mod repositorio {
         fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>>;
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String>;
+        fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String>;
         fn añadir(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn eliminar(&self, nombre: &str) -> AppResult<()>;
         fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta>;
