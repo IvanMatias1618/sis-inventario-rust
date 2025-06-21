@@ -1,11 +1,9 @@
-// 1) CONSULTA: agregar consulta de insumo x en recetas?
-// 2) TAREA: al editar receta .map_err(|e| match e{
-// rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(()format!)"No se encontro el insumo con id: {se,id s,
-// _ => AppError::DbError(())ei,gue quedando el mismo nombre anterior. (funcion editar: linea 1539)
-// 3) TAREA: eliminar recetas si?;
-//Ok(nombre) sus insumos se eliminaron.
+// NOTAS: {
+//    1.-
+// }
 //
-// A) EMPEZAR A EXPONER ENDPOINTS.
+// TAREAS:
+//    A: Trabajar en los endpoints de la app.
 //
 //
 use negocio::AppError;
