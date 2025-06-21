@@ -1,14 +1,77 @@
 // NOTAS: {
-//    1.-
+//    1.- Eliminar recetas  de los insumos que son eliminados.
+//    2.- Queda pendiente la consulta de insumo_en_recetas dentro de repositorio.
 // }
 //
 // TAREAS:
 //    A: Trabajar en los endpoints de la app.
 //
 //
+use crate::actix::crear_insumo_manejador;
+use crate::negocio;
+use crate::repositorio;
+use crate::servicio;
+use actix::buscar_insumo_manejador;
+use actix_web::{App, HttpServer, web};
 use negocio::AppError;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-fn main() -> Result<(), crate::negocio::AppError> {
+#[tokio::main]
+async fn main() -> Result<(), crate::negocio::AppError> {
+    //Cargamos de repositorio (inyeccion de dependencias).:
+    let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
+        Ok(almacen) => almacen,
+        Err(e) => {
+            println!(
+                "Error al abrir la base de datos para el almacen\nError: {}",
+                e
+            );
+            return Err(e);
+        }
+    };
+    let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria.db") {
+        Ok(recetario) => recetario,
+        Err(e) => {
+            println!(
+                "Error al abrir la base de datos para el recetario\nError: {}",
+                e
+            );
+            return Err(e);
+        }
+    };
+    println!("Almacen y Recetario cargados correctamente");
+
+    //Envolvemos almacen en Box para que sea aceptado por Servicio.
+    // Envolvemos en Mutex para permitir la mutabilidad segura.
+    // Envolvemos en Arc para multihilo.
+    let servicio_de_almacen = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(Box::new(
+        almacen,
+    ))));
+    let servicio_de_recetas = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(Box::new(
+        recetario,
+    ))));
+
+    //Iniciar el server:
+    HttpServer::new(move || {
+        let almacen_info = servicio_de_almacen.clone();
+        let recetas_info = servicio_de_recetas.clone();
+        App::new()
+            .app_data(web::Data::new(almacen_info))
+            .app_date(web::Data::new(recetas_info))
+            .service(web::resource("/insumos").route(web::post().to(crear_insumo_manejador)))
+            .service(
+                web::resource("/insumos/{nombre_insumo}")
+                    .route(web::get().to(buscar_insumo_manejador)),
+            )
+    })
+    .bind(/* CAMBIAR A LA IP REAL: */ ("ip", 8080))?
+    .run()
+    .await?;
+    Ok(())
+}
+
+fn cli_main() -> Result<(), crate::negocio::AppError> {
     use crate::cli;
     use crate::repositorio;
     use crate::servicio;
@@ -101,13 +164,13 @@ pub mod cli {
 
 
                  \n                1) Salir del programa.
-                 \n2) Crear Un Insumo.                3) Crear unafn obten        \n4) Buscar un insumo.               5) Buscar una receta.
+                 \n2) Crear Un Insumo.                3) Crear unafn obten
+                 \n4) Buscar un insumo.               5) Buscar una receta.
                  \n6) Ver todos los insumos.          7) Ver todas las recetas.
                  \n8) Ver el valor de un Insumo.      9) Ver el valor de una Receta.
                  \n10) Eliminar Insumo.              11) Eliminar Receta.
                  \n12) Producir Receta.              13) Ingredientes en recetas.
-
-fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String>;                 \n14) Editar Insumo.                15) Editar Receta."
+                 \n14) Editar Insumo.                15) Editar Receta."
             );
             let res = no_es_cero();
             if res > 15 {
@@ -451,6 +514,72 @@ fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String>;              
                 println!("{}", e);
                 return false;
             }
+        }
+    }
+}
+
+pub mod actix {
+    use actix_web::{HttpResponse, Responder, web};
+    use serde::{Deserialize, Serialize};
+
+    use crate::comandos;
+    use crate::negocio::AppError;
+    use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
+
+    #[derive(Deserialize)]
+    pub struct CrearInsumoPeticion {
+        pub nombre: String,
+        pub cantidad: u32,
+        pub cantidad_minima: u32,
+        pub precio: u32,
+    }
+
+    #[derive(Deserialize)]
+    pub struct MensajeRespuesta {
+        pub mensaje: String,
+    }
+
+    pub async fn crear_insumo_manejador(
+        app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
+        peticion: web::Json<CrearInsumoPeticion>,
+    ) -> impl Responder {
+        let mut almacen = app_info_almacen.lock().await;
+        match almacen.añadir(
+            peticion.nombre.clone(),
+            peticion.cantidad,
+            peticion.cantidad_minima,
+            peticion.precio,
+        ) {
+            Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
+                mensaje: format!("Insumo: {}, creado exitosamente", insumo.nombre),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Error al crear insumo: {}", e),
+            }),
+        }
+    }
+
+    pub async fn buscar_insumo_manejador(
+        app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
+        web::Path(nombre_insumo): web::Path<String>,
+    ) -> impl Responder {
+        let mut almacen = app_info_almacen.lock().await;
+        match almacen.buscar(&nombre_insumo) {
+            Ok(resultados) => {
+                if resultados.is_empty() {
+                    HttpResponse::NotFound().json(MensajeRespuesta {
+                        mensaje: format!(
+                            "El insumo de nombre: {}\n No fue encontrado",
+                            nombre_insumo
+                        ),
+                    })
+                } else {
+                    HttpResponse::Ok().json(resultados)
+                }
+            }
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Error al buscar el insumo: {}\nError: {}", nombre_insumo, e),
+            }),
         }
     }
 }
