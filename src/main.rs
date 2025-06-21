@@ -7,11 +7,8 @@
 //    A: Trabajar en los endpoints de la app.
 //
 //
+use crate::actix::buscar_insumo_manejador;
 use crate::actix::crear_insumo_manejador;
-use crate::negocio;
-use crate::repositorio;
-use crate::servicio;
-use actix::buscar_insumo_manejador;
 use actix_web::{App, HttpServer, web};
 use negocio::AppError;
 use std::sync::Arc;
@@ -19,6 +16,8 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), crate::negocio::AppError> {
+    use crate::repositorio;
+    use crate::servicio;
     //Cargamos de repositorio (inyeccion de dependencias).:
     let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
         Ok(almacen) => almacen,
@@ -45,7 +44,7 @@ async fn main() -> Result<(), crate::negocio::AppError> {
     //Envolvemos almacen en Box para que sea aceptado por Servicio.
     // Envolvemos en Mutex para permitir la mutabilidad segura.
     // Envolvemos en Arc para multihilo.
-    let servicio_de_almacen = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(Box::new(
+    let servicio_de_almacen = Arc::new(Mutex::new(servicio::ServicioDeAlmacen::nuevo(Box::new(
         almacen,
     ))));
     let servicio_de_recetas = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(Box::new(
@@ -58,7 +57,7 @@ async fn main() -> Result<(), crate::negocio::AppError> {
         let recetas_info = servicio_de_recetas.clone();
         App::new()
             .app_data(web::Data::new(almacen_info))
-            .app_date(web::Data::new(recetas_info))
+            .app_data(web::Data::new(recetas_info))
             .service(web::resource("/insumos").route(web::post().to(crear_insumo_manejador)))
             .service(
                 web::resource("/insumos/{nombre_insumo}")
@@ -526,7 +525,7 @@ pub mod actix {
     use crate::negocio::AppError;
     use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
 
-    #[derive(Deserialize)]
+    #[derive(Serialize, Deserialize)]
     pub struct CrearInsumoPeticion {
         pub nombre: String,
         pub cantidad: u32,
@@ -534,7 +533,7 @@ pub mod actix {
         pub precio: u32,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Serialize)]
     pub struct MensajeRespuesta {
         pub mensaje: String,
     }
@@ -551,7 +550,7 @@ pub mod actix {
             peticion.precio,
         ) {
             Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
-                mensaje: format!("Insumo: {}, creado exitosamente", insumo.nombre),
+                mensaje: format!("Insumo: {}, creado exitosamente", peticion.nombre),
             }),
             Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
                 mensaje: format!("Error al crear insumo: {}", e),
@@ -561,8 +560,9 @@ pub mod actix {
 
     pub async fn buscar_insumo_manejador(
         app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
-        web::Path(nombre_insumo): web::Path<String>,
+        ruta: web::Path<String>,
     ) -> impl Responder {
+        let nombre_insumo = ruta.into_inner();
         let mut almacen = app_info_almacen.lock().await;
         match almacen.buscar(&nombre_insumo) {
             Ok(resultados) => {
@@ -795,7 +795,9 @@ pub mod negocio {
     use chrono::{DateTime, TimeZone};
     use serde::{Deserialize, Serialize};
     //Esto de acá es para la fecha.
+    use actix_web;
     use rusqlite::Error as SqlError;
+    use std::io;
     use thiserror::Error;
     use uuid::Uuid; // Esta libreria nos viene bien para id, se usan structs de tipo uuid
 
@@ -812,6 +814,10 @@ pub mod negocio {
         CampoVacio(String),
         #[error("Error de Base de datos: {0}")]
         DbError(#[from] SqlError),
+        #[error("Error de I/O: {0} ")]
+        IoError(#[from] io::Error),
+        #[error("Error de Actix_web: {0}")]
+        ActixError(#[from] actix_web::Error),
     }
 
     // Encapsulamos la gestion de errores de la aplicacion.
