@@ -1117,9 +1117,10 @@ pub mod repositorio {
         servicio::*,
     };
     use rusqlite::{Connection, Error, params};
+    use std::sync::{Arc, Mutex};
 
     pub struct RecetarioEnMemoria {
-        conexion: Connection,
+        conexion: Arc<Mutex<Connection>>,
     }
 
     impl RecetarioEnMemoria {
@@ -1144,13 +1145,19 @@ pub mod repositorio {
                 )",
                 [],
             )?;
-            Ok(RecetarioEnMemoria { conexion })
+            Ok(RecetarioEnMemoria {
+                conexion: Arc::new(Mutex::new(conexion)),
+            })
         }
     }
 
     impl RecetasEnMemoria for RecetarioEnMemoria {
         fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()> {
-            let transaccion = self.conexion.transaction()?;
+            let mut conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear el mutex de la conexion. {}", e))
+            })?;
+
+            let transaccion = conexion_segura.transaction()?;
             transaccion.execute(
                 "UPDATE recetas SET nombre = ?1, costo = ?2 WHERE id = ?3",
                 params![receta.nombre(), receta.costo(), receta.obtener_id()],
@@ -1166,8 +1173,10 @@ pub mod repositorio {
         }
 
         fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
-            let nombre: String = self
-                .conexion
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion. {}", e))
+            })?;
+            let nombre: String = conexion_segura
                 .query_row(
                     "SELECT nombre FROM recetas WHERE id = ?",
                     params![id],
@@ -1182,8 +1191,10 @@ pub mod repositorio {
             Ok(nombre)
         }
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String> {
-            let id: String = self
-                .conexion
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion. {}", e))
+            })?;
+            let id: String = conexion_segura
                 .query_row(
                     "SELECT id FROM recetas WHERE nombre = ?",
                     params![nombre],
@@ -1198,7 +1209,10 @@ pub mod repositorio {
             Ok(id)
         }
         fn añadir(&mut self, receta: Receta) -> AppResult<()> {
-            let transaccion = self.conexion.transaction()?;
+            let mut conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let transaccion = conexion_segura.transaction()?;
 
             transaccion.execute(
                 "INSERT INTO recetas (id, nombre, costo) VALUES (?1, ?2, ?3)",
@@ -1216,9 +1230,11 @@ pub mod repositorio {
         }
         fn eliminar(&self, nombre: &str) -> AppResult<()> {
             let id = self.obtener_id_con_nombre(nombre)?;
-            let bandera = self
-                .conexion
-                .execute("DELETE FROM recetas WHERE id =?", params![id])?;
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let bandera =
+                conexion_segura.execute("DELETE FROM recetas WHERE id =?", params![id])?;
             if bandera == 0 {
                 return Err(AppError::ErrorPersonal(format!(
                     "El insumo: {}, no se pudo eliminar.\nNo fue encontrado",
@@ -1229,8 +1245,10 @@ pub mod repositorio {
         }
         fn obtener(&self, busqueda: &str) -> AppResult<negocio::Receta> {
             let id = self.obtener_id_con_nombre(busqueda)?;
-
-            let mut accion = self.conexion.prepare(
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let mut accion = conexion_segura.prepare(
                 "SELECT ingrediente_id, cantidad FROM ingredientes_en_receta WHERE receta_id = ?",
             )?;
             let ingredientes_iter = accion.query_map(params![id], |fila| {
@@ -1241,7 +1259,7 @@ pub mod repositorio {
                 let (insumo_id, cantidad) = ingrediente_result?;
                 ingredientes.push((insumo_id, cantidad));
             }
-            self.conexion
+            conexion_segura
                 .query_row(
                     "SELECT id, nombre, costo FROM recetas WHERE id = ?",
                     params![id],
@@ -1264,9 +1282,11 @@ pub mod repositorio {
         }
 
         fn listar(&self) -> AppResult<Vec<String>> {
-            let mut accion = self
-                .conexion
-                .prepare("SELECT nombre FROM recetas ORDER BY nombre")?;
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion.: {}", e))
+            })?;
+            let mut accion =
+                conexion_segura.prepare("SELECT nombre FROM recetas ORDER BY nombre")?;
             let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
             let mut nombres = Vec::new();
             for nombre in nombres_iter {
@@ -1284,9 +1304,11 @@ pub mod repositorio {
             Ok(recetas)
         }
         fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>> {
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion. {}", e))
+            })?;
             let mut res: Vec<String> = Vec::new();
-            let mut accion = self
-                .conexion
+            let mut accion = conexion_segura
                 .prepare("SELECT receta_id FROM ingredientes_en_receta WHERE ingrediente_id = ?")?;
             let mut filas = accion.query(params![insumo_id])?;
 
@@ -1299,7 +1321,7 @@ pub mod repositorio {
         }
     }
 
-    pub trait RecetasEnMemoria {
+    pub trait RecetasEnMemoria: Send + Sync {
         fn editar_receta(&mut self, receta: negocio::Receta) -> AppResult<()>;
         fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>>;
         fn obtener_id_con_nombre(&self, nombre: &str) -> AppResult<String>;
@@ -1311,7 +1333,7 @@ pub mod repositorio {
         fn listar(&self) -> AppResult<Vec<String>>;
     }
 
-    pub trait Bodega {
+    pub trait Bodega: Send + Sync {
         fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()>;
         fn eliminar(&self, nombre: &String) -> AppResult<()>;
         fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo>;
@@ -1324,7 +1346,7 @@ pub mod repositorio {
     }
 
     pub struct AlmacenEnMemoria {
-        conexion: Connection,
+        conexion: Arc<Mutex<Connection>>,
     }
 
     impl AlmacenEnMemoria {
@@ -1340,13 +1362,18 @@ pub mod repositorio {
                 )",
                 [],
             )?;
-            Ok(AlmacenEnMemoria { conexion: conn })
+            Ok(AlmacenEnMemoria {
+                conexion: Arc::new(Mutex::new(conn)),
+            })
         }
     }
 
     impl Bodega for AlmacenEnMemoria {
         fn usar_insumo(&self, nueva_cantidad: u32, id: &String) -> AppResult<()> {
-            let columnas_afectadas = self.conexion.execute(
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion. : {}", e))
+            })?;
+            let columnas_afectadas = conexion_segura.execute(
                 "UPDATE insumos SET cantidad = ?1 WHERE id = ?2",
                 params![nueva_cantidad, id],
             )?;
@@ -1359,8 +1386,10 @@ pub mod repositorio {
             Ok(())
         }
         fn obtener_nombre_con_id(&self, id: &String) -> AppResult<String> {
-            let nombre = self
-                .conexion
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let nombre = conexion_segura
                 .query_row(
                     "SELECT nombre FROM insumos WHERE id = ?",
                     params![id],
@@ -1375,8 +1404,10 @@ pub mod repositorio {
             Ok(nombre)
         }
         fn obtener_id_con_nombre(&self, nombre: &String) -> AppResult<String> {
-            let id: String = self
-                .conexion
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let id: String = conexion_segura
                 .query_row(
                     "SELECT id FROM insumos WHERE nombre = ?",
                     params![nombre],
@@ -1392,7 +1423,10 @@ pub mod repositorio {
             Ok(id)
         }
         fn añadir(&self, insumo: negocio::Insumo) -> AppResult<()> {
-            self.conexion.execute(
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            conexion_segura.execute(
                 "INSERT INTO insumos (id, nombre, cantidad, cantidad_minima, precio)
                 VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
@@ -1403,12 +1437,14 @@ pub mod repositorio {
                     insumo.obtener_precio()
                 ],
             )?;
-            let clave = self.conexion.last_insert_rowid();
             Ok(())
         }
 
         fn editar_insumo(&self, insumo: negocio::Insumo) -> AppResult<()> {
-            let afectados = self.conexion.execute(
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion. {}", e))
+            })?;
+            let afectados = conexion_segura.execute(
                 "UPDATE insumos SET nombre = ?1, cantidad = ?2, cantidad_minima = ?3, precio = ?4 WHERE id = ?5",
                 params![insumo.nombre(),
                 insumo.obtener_cantidad(),
@@ -1427,9 +1463,11 @@ pub mod repositorio {
         // cambiar nombre por id, y remover id del cuerpo
         fn eliminar(&self, nombre: &String) -> AppResult<()> {
             let id = self.obtener_id_con_nombre(nombre)?;
-            let funciono = self
-                .conexion
-                .execute("DELETE FROM insumos WHERE id =?", params![id])?;
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let funciono =
+                conexion_segura.execute("DELETE FROM insumos WHERE id =?", params![id])?;
             if funciono == 0 {
                 return Err(AppError::ErrorPersonal(format!(
                     "El insumo: {}, a eliminar.\nNo fue encontrado.",
@@ -1441,7 +1479,10 @@ pub mod repositorio {
 
         fn obtener(&self, busqueda: &String) -> AppResult<negocio::Insumo> {
             let id = self.obtener_id_con_nombre(busqueda)?;
-            self.conexion
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            conexion_segura
                 .query_row(
                     "SELECT id, nombre, cantidad, cantidad_minima, precio
                  FROM insumos WHERE id = ?",
@@ -1466,9 +1507,11 @@ pub mod repositorio {
         }
 
         fn mostrar_todos(&self) -> AppResult<Vec<String>> {
-            let mut accion = self
-                .conexion
-                .prepare("SELECT nombre FROM insumos ORDER BY nombre")?;
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let mut accion =
+                conexion_segura.prepare("SELECT nombre FROM insumos ORDER BY nombre")?;
             let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
             let mut nombres = Vec::new();
             for nombre in nombres_iter {
@@ -1478,7 +1521,10 @@ pub mod repositorio {
         }
 
         fn obtener_todos(&self) -> AppResult<Vec<Insumo>> {
-            let mut accion = self.conexion.prepare(
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let mut accion = conexion_segura.prepare(
                 "SELECT id, nombre, cantidad, cantidad_minima, precio
                 FROM insumos ORDER BY nombre",
             )?;
