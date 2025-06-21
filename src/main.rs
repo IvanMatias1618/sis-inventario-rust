@@ -11,11 +11,24 @@ use crate::actix::buscar_insumo_manejador;
 use crate::actix::crear_insumo_manejador;
 use actix_web::{App, HttpServer, web};
 use negocio::AppError;
+use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 #[tokio::main]
-async fn main() -> Result<(), crate::negocio::AppError> {
+async fn main() -> Result<(), AppError> {
+    let argumentos: Vec<String> = env::args().collect();
+    if argumentos.len() > 1 && argumentos[1] == "server" {
+        println!("Iniciando el servidor Http...");
+        correr_servidor().await?
+    } else {
+        println!("Iniciando la linea de comandos.");
+        correr_cli()?;
+    }
+    Ok(())
+}
+
+async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
     use crate::repositorio;
     use crate::servicio;
     //Cargamos de repositorio (inyeccion de dependencias).:
@@ -70,7 +83,7 @@ async fn main() -> Result<(), crate::negocio::AppError> {
     Ok(())
 }
 
-fn cli_main() -> Result<(), crate::negocio::AppError> {
+fn correr_cli() -> Result<(), crate::negocio::AppError> {
     use crate::cli;
     use crate::repositorio;
     use crate::servicio;
