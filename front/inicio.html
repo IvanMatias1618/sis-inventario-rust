@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <link rel="stylesheet" src="estilos.css">
+  <script type="module" src="inicio.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width initial-scale=1.0">
+  <title> Seccion de Insumos </title>
+</head>
+
+<body>
+  <div class="formularios" id="formularios">
+    <div class="formularios_insumos" id="crear__insumo_contenedor">
+      <form class="formulario__crear" action="/ruta" method="post" id="crear__insumo">
+        <fieldset>
+          <legend> Agregar un insumo al inventario </legend>
+          <label for="nombre">Nombre de insumo:</label>
+          <input type="text" class="insumo__nombre" id="agregar__insumo_nombre" name="nombre" required>
+          <label for="cantidad">Cantidad total del insumo:</label>
+          <input type="number" class="insumo__cantidad" id="agregar__insumo_cantidad" name="cantidad" required>
+          <label for="cantidad_minima">Cantidad minima del insumo:</label>
+          <input type="number" class="insumo__cantidad_minima" id="agregar__insumo_cantidad_minima"
+            name="cantidad_minima" required>
+          <label for="precio">Precio por kilo del insumo:</label>
+          <input type="number" class="insumo__precio" id="agregar__insumo_precio" name="precio" required>
+          <button type="submit" id="btn_agregar__insumo"> Agregar </button>
+        </fieldset>
+      </form>
+    </div>
+    <div class="formularios_insumos" id="buscar__insumo_contenedor">
+      <form class="formulario__buscar" id="buscar__insumo_nombre" action="/ruta" method="get">
+        <fieldset>
+          <legend> Buscar en insumos: </legend>
+          <label for="insumo__buscar_nombre"> Nombre del insumo a buscar: </label>
+          <input type="text" class="insumo__nombre" id="buscar__insumo_nombre" name="insumo__buscar_nombre" required>
+          <button type="submit" id="btn_buscar__insumo_nombre"> Buscar </button>
+          </fieldest>
+      </form>
+    </div>
+  </div>
+
+</body>
+
+</html>
