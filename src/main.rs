@@ -9,7 +9,7 @@
 //
 use crate::actix::buscar_insumo_manejador;
 use crate::actix::crear_insumo_manejador;
-use actix_web::{App, HttpServer, web};
+use actix_web::{App, HttpServer, http, web};
 use negocio::AppError;
 use std::env;
 use std::sync::Arc;
@@ -31,6 +31,7 @@ async fn main() -> Result<(), AppError> {
 async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
     use crate::repositorio;
     use crate::servicio;
+    use actix_cors::Cors;
     //Cargamos de repositorio (inyeccion de dependencias).:
     let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
         Ok(almacen) => almacen,
@@ -65,10 +66,20 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
     ))));
 
     //Iniciar el server:
+
     HttpServer::new(move || {
         let almacen_info = servicio_de_almacen.clone();
         let recetas_info = servicio_de_recetas.clone();
+
+        let cors = Cors::default()
+            .allowed_origin("http://localhost:3000")
+            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+            .allowed_headers(vec![http::header::CONTENT_TYPE])
+            .supports_credentials()
+            .max_age(3600);
+
         App::new()
+            .wrap(cors)
             .app_data(web::Data::new(almacen_info))
             .app_data(web::Data::new(recetas_info))
             .service(web::resource("/insumos").route(web::post().to(crear_insumo_manejador)))
