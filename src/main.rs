@@ -77,7 +77,7 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
                     .route(web::get().to(buscar_insumo_manejador)),
             )
     })
-    .bind(/* CAMBIAR A LA IP REAL: */ ("ip", 8080))?
+    .bind(("127.0.0.1", 8080))?
     .run()
     .await?;
     Ok(())
