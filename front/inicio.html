@@ -14,7 +14,7 @@
       color: black;
     }
   </style>
-  <script type="module" src="inicio.js"></script>
+  <script type="module" src="./dist/inicio.js" defer></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width initial-scale=1.0">
   <title> Seccion de Insumos </title>
@@ -23,7 +23,7 @@
 <body>
   <div class="formularios" id="formularios">
     <div class="formularios_insumos" id="crear__insumo_contenedor">
-      <form class="formulario__crear" action="/ruta" method="post" id="crear__insumo">
+      <form class="formulario__crear" id="crear__insumo">
         <fieldset>
           <legend> Agregar un insumo al inventario </legend>
           <label for="nombre">Nombre de insumo:</label>
@@ -40,7 +40,7 @@
       </form>
     </div>
     <div class="formularios_insumos" id="buscar__insumo_contenedor">
-      <form class="formulario__buscar" id="buscar__insumo_nombre" action="/ruta" method="get">
+      <form class="formulario__buscar" id="buscar__insumo_nombre">
         <fieldset>
           <legend> Buscar en insumos: </legend>
           <label for="insumo__buscar_nombre"> Nombre del insumo a buscar: </label>
