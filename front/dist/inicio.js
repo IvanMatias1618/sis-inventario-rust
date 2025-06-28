@@ -1,3 +1,20 @@
+/*╭🌸╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌✦╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌🌸╮
+  │  🧠 nodo central del pensamiento
+  │
+  │  MODULOS: [ contratos.ts, servicio.ts, modelos.ts]
+  │
+  │  🐾 seccion abierta: []
+  │     ⤷ módulo activo, lógica actual, ritual en curso
+  │
+  │  🌞 tareas actuales: []
+  │     ⤷ qué se está orquestando ahora
+  │
+  │  🔬 tareas futuras: []
+  │     ⤷ cosas que aún duermen pero susurran promesas
+  │
+  │  🌌 pendientes: []
+  │     ⤷ rarezas, condiciones límite, TODOs que acechan
+  ╰🌸╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌✦╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌🌸╯*/
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -41,3 +58,17 @@ form.addEventListener('submit', (event) => __awaiter(void 0, void 0, void 0, fun
         console.error('Error al enviar insumo:', error);
     }
 }));
+const contenedorFormularios = document.querySelector("formularios__insumos_contenedor");
+document.querySelectorAll("#menu_formularios li").forEach(item => {
+    //OCULTAR: todos los forms
+    item.addEventListener("click", () => {
+        Array.from(contenedorFormularios.children).forEach(formulario => {
+            formulario.classList.remove("activo");
+        });
+        const id = item.getAttribute("data-formulario");
+        if (id) {
+            const formAmostrar = document.getElementById(id);
+            formAmostrar === null || formAmostrar === void 0 ? void 0 : formAmostrar.classList.add("active");
+        }
+    });
+});

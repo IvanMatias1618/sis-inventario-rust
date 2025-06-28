@@ -2,18 +2,7 @@
 <html lang="es">
 
 <head>
-  <link rel="stylesheet" src="estilos.css">
-  <style>
-    div {
-      background-color: red;
-    }
-
-    form {
-      margin: 10px;
-      background-color: yellow;
-      color: black;
-    }
-  </style>
+  <link rel="stylesheet" href="./css/estilos.css">
   <script type="module" src="./dist/inicio.js" defer></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width initial-scale=1.0">
@@ -21,15 +10,18 @@
 </head>
 
 <body>
+  <div id="cabecera">
+    <h1 id="titulo"> Sistema de inventario:</h1>
+    <h1 id="subtitulo"> Insumos</h1>
+  </div>
   <div id="menu_formularios">
     <ul>
-      <li id="menu__crear_insumo"> Crear insumo
-      <li>
-      <li id="menu__buscar_insumos"> Buscar insumos </li>
-      <li id="menu__valor__insumo"> Valor de un insumo </li>
-      <li id="menu__editar__insumo"> Editar un insumo</li>
-      <li id="menu__eliminar_insumo"> Eliminar un insumo</li>
-      <li id="crear__receta"> Crear una receta </li>
+      <li id="menu__crear_insumo" data-formulario="crear__insumo"> Crear insumo</li>
+      <li id="menu__buscar_insumos" data-formulario="buscar__insumo"> Buscar insumos </li>
+      <li id="menu__todos_insumo" data-formulario="insumos_todos"> Ver todos los insumos </li>
+      <li id="menu__valor_insumo" data-formulario="valor_insumo"> Ver el valor de un insumo </li>
+      <li id="menu__editar__insumo" data-formulario="formulario__editar_insumo"> Editar un insumo</li>
+      <li id="menu__eliminar_insumo" data-formulario="formulario__eliminar_insumo"> Eliminar un insumo</li>
     </ul>
   </div>
   <div class="formularios" id="formularios">
@@ -49,47 +41,47 @@
           <button type="submit" id="btn_agregar__insumo"> Agregar </button>
         </fieldset>
       </form>
-      <form class="formulario__buscar" id="buscar__insumo_nombre">
+      <form class="formulario__buscar" id="buscar__insumo">
         <fieldset>
           <legend> Buscar en insumos: </legend>
-          <label for="insumo__buscar_nombre"> Nombre del insumo a buscar: </label>
+          <label for="buscar__insumo_nombre"> Nombre del insumo a buscar: </label>
           <input type="text" class="insumo__nombre" id="buscar__insumo_nombre" name="insumo__buscar_nombre" required>
-          <button type="submit" id="btn_buscar__insumo_nombre"> Buscar </button>
+          <button type="submit" id="btn_buscar__insumo"> Buscar </button>
         </fieldset>
       </form>
 
-      <div id="formulario__insumos_todos">
-        <h1 class="titulos_en_formularios"> Buscar todos los insumos: </h1>
-        <button id="btn__insumos__todos"> Buscar </button>
-      </div>
+      <form id="insumos_todos">
+        <label>
+          <button type="submit" id="btn_todos">Ver todos</button> </label>
+      </form>
 
-      <div id="formulario__insumos_todos">
-        <h1 class="titulos_en_formularios"> Buscar el valor del insumo: </h1>
-        <button id="btn__insumos__todos"> Buscar </button>
-      </div>
+      <form class="formulario_insumos" id="valor_insumo">
+        <label><input type="text" name="nombre__valor_insumo" required> </label>
+        <button type="submit" id="btn_valor_insumo"> Ver insumo</button>
+      </form>
 
-      <form class="formulario__crear" id="editar__insumo">
+      <form class="formulario_insumos" id="editar__insumo">
         <fieldset>
           <legend> Editar un insumo del inventario </legend>
           <label for="nombre">Nombre de insumo:</label>
-          <input type="text" class="insumo__nombre" id="agregar__insumo_nombre" name="nombre" required>
+          <input type="text" class="insumo__nombre" id="editar__insumo_nombre" name="nombre">
           <label for="cantidad">Cantidad total del insumo:</label>
-          <input type="number" class="insumo__cantidad" id="agregar__insumo_cantidad" name="cantidad" required>
+          <input type="number" class="insumo__cantidad" id="editar__insumo_cantidad" name="cantidad">
           <label for="cantidad_minima">Cantidad minima del insumo:</label>
-          <input type="number" class="insumo__cantidad_minima" id="agregar__insumo_cantidad_minima"
-            name="cantidad_minima" required>
+          <input type="number" class="insumo__cantidad_minima" id="editar__insumo_cantidad_minima"
+            name="cantidad_minima">
           <label for="precio">Precio por kilo del insumo:</label>
-          <input type="number" class="insumo__precio" id="agregar__insumo_precio" name="precio" required>
-          <button type="submit" id="btn_agregar__insumo"> Agregar </button>
+          <input type="number" class="insumo__precio" id="editar__insumo_precio" name="precio">
+          <button type="submit" id="btn_editar__insumo"> Agregar </button>
         </fieldset>
       </form>
 
-      <form class="formulario__eliminar__insumo" id="buscar__insumo_nombre">
+      <form class="formulario_insumos" id="eliminar__insumo">
         <fieldset>
           <legend> Buscar en insumos: </legend>
           <label for="insumo__buscar_nombre"> Nombre del insumo a eliminar: </label>
           <input type="text" class="insumo__nombre" id="buscar__insumo_nombre" name="insumo__buscar_nombre" required>
-          <button type="submit" id="btn_buscar__insumo_nombre"> Eliminar </button>
+          <button type="submit" id="btn_eliminar__insumo"> Eliminar </button>
         </fieldset>
       </form>
 

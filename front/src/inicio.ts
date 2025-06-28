@@ -1,3 +1,23 @@
+/*╭🌸╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌✦╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌🌸╮
+  │  🧠 nodo central del pensamiento                 
+  │
+  │  MODULOS: [ contratos.ts, servicio.ts, modelos.ts]
+  │                                                   
+  │  🐾 seccion abierta: []                             
+  │     ⤷ módulo activo, lógica actual, ritual en curso      
+  │                                                          
+  │  🌞 tareas actuales: []                                   
+  │     ⤷ qué se está orquestando ahora                      
+  │                                                         
+  │  🔬 tareas futuras: []                                    
+  │     ⤷ cosas que aún duermen pero susurran promesas       
+  │                                                          
+  │  🌌 pendientes: []                                        
+  │     ⤷ rarezas, condiciones límite, TODOs que acechan      
+  ╰🌸╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌✦╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌🌸╯*/
+
+
+
 import { servicioDeInsumos } from './servicio.js';
 import type { InsumosConsulta } from './contratos.js';
 import type { Insumo } from './modelos.js';
@@ -31,4 +51,19 @@ form.addEventListener('submit', async (event: SubmitEvent) => {
   } catch (error) {
     console.error('Error al enviar insumo:', error);
   }
+});
+
+const contenedorFormularios = document.querySelector("formularios__insumos_contenedor") as HTMLElement;
+document.querySelectorAll("#menu_formularios li").forEach( item => {
+  //OCULTAR: todos los forms
+  item.addEventListener("click", () => {
+    Array.from(contenedorFormularios.children).forEach( formulario => {
+      formulario.classList.remove("activo");
+    });
+    const id = item.getAttribute("data-formulario");
+    if (id) {
+      const formAmostrar = document.getElementById(id);
+      formAmostrar?.classList.add("active");
+    }
+  });
 });
