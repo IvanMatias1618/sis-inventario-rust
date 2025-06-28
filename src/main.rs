@@ -6,7 +6,7 @@
 // TAREAS:
 //    A: Trabajar en los endpoints de la app.
 //
-//
+
 use crate::actix::buscar_insumo_manejador;
 use crate::actix::crear_insumo_manejador;
 use actix_web::{App, HttpServer, http, web};
@@ -31,7 +31,13 @@ async fn main() -> Result<(), AppError> {
 async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
     use crate::repositorio;
     use crate::servicio;
+    use actix::{
+        buscar_insumo_manejador, crear_insumo_manejador, crear_receta_manejador,
+        editar_insumo_manejador, eliminar_insumo_manejador, valor_de_insumo_manejador,
+        ver_todos_los_insumos_manejador,
+    };
     use actix_cors::Cors;
+
     //Cargamos de repositorio (inyeccion de dependencias).:
     let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
         Ok(almacen) => almacen,
@@ -82,11 +88,21 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
             .wrap(cors)
             .app_data(web::Data::new(almacen_info))
             .app_data(web::Data::new(recetas_info))
-            .service(web::resource("/insumos").route(web::post().to(crear_insumo_manejador)))
+            .service(web::resource("/insumos/crear").route(web::post().to(crear_insumo_manejador)))
+            .service(web::resource("/insumos/buscar").route(web::get().to(buscar_insumo_manejador)))
             .service(
-                web::resource("/insumos/{nombre_insumo}")
-                    .route(web::get().to(buscar_insumo_manejador)),
+                web::resource("/insumos/todos")
+                    .route(web::get().to(ver_todos_los_insumos_manejador)),
             )
+            .service(
+                web::resource("/insumos/valor").route(web::get().to(valor_de_insumo_manejador)),
+            )
+            .service(web::resource("/insumos/editar").route(web::put().to(editar_insumo_manejador)))
+            .service(
+                web::resource("/insumos/{insumo}")
+                    .route(web::delete().to(eliminar_insumo_manejador)),
+            )
+            .service(web::resource("/recetas/crear").route(web::post().to(crear_receta_manejador)))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
@@ -542,12 +558,30 @@ pub mod cli {
 }
 
 pub mod actix {
-    use actix_web::{HttpResponse, Responder, web};
-    use serde::{Deserialize, Serialize};
-
     use crate::comandos;
     use crate::negocio::AppError;
     use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas};
+    use actix_web::{HttpResponse, Responder, web};
+    use serde::{Deserialize, Serialize};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    #[derive(Deserialize)]
+    pub struct DatosReceta {
+        nombre: String,
+        ingredientes: Vec<Ingrediente>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct Ingrediente {
+        nombre: String,
+        cantidad: u32,
+    }
+
+    #[derive(Deserialize)]
+    pub struct ParametrosConsulta {
+        consulta: Option<String>,
+    }
 
     #[derive(Serialize, Deserialize)]
     pub struct CrearInsumoPeticion {
@@ -560,6 +594,19 @@ pub mod actix {
     #[derive(Deserialize, Serialize)]
     pub struct MensajeRespuesta {
         pub mensaje: String,
+    }
+
+    pub fn extraer_nombre_insumo(
+        ruta: Option<web::Path<String>>,
+        query: Option<web::Query<ParametrosConsulta>>,
+    ) -> Option<String> {
+        if let Some(consulta) = query {
+            consulta.consulta.clone()
+        } else if let Some(ruta_valor) = ruta {
+            Some(ruta_valor.into_inner())
+        } else {
+            None
+        }
     }
 
     pub async fn crear_insumo_manejador(
@@ -585,8 +632,16 @@ pub mod actix {
     pub async fn buscar_insumo_manejador(
         app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
         ruta: web::Path<String>,
+        query: Option<web::Query<ParametrosConsulta>>,
     ) -> impl Responder {
-        let nombre_insumo = ruta.into_inner();
+        let nombre_insumo = match extraer_nombre_insumo(Some(ruta), query) {
+            Some(nombre) => nombre,
+            None => {
+                return HttpResponse::BadRequest().json(MensajeRespuesta {
+                    mensaje: "Falta el parametro de busqueda".to_string(),
+                });
+            }
+        };
         let mut almacen = app_info_almacen.lock().await;
         match almacen.buscar(&nombre_insumo) {
             Ok(resultados) => {
@@ -603,6 +658,121 @@ pub mod actix {
             }
             Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
                 mensaje: format!("Error al buscar el insumo: {}\nError: {}", nombre_insumo, e),
+            }),
+        }
+    }
+
+    pub async fn ver_todos_los_insumos_manejador(
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+    ) -> impl Responder {
+        let almacen = app_info_almacen.lock().await;
+        let resultados = comandos::ver_todos_los_insumos(&almacen);
+        HttpResponse::Ok().json(resultados)
+    }
+
+    pub async fn valor_de_insumo_manejador(
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        query: web::Query<ParametrosConsulta>,
+    ) -> impl Responder {
+        let nombre = match &query.consulta {
+            Some(nombre) => nombre.clone(),
+            None => {
+                return HttpResponse::BadRequest().json(MensajeRespuesta {
+                    mensaje: "Falta el parametro 'consulta' ".to_string(),
+                });
+            }
+        };
+        let almacen = app_info_almacen.lock().await;
+        match comandos::valor_de_insumo(&nombre, &almacen) {
+            Ok((nombre, cantidad, cantidad_minima, costo)) => {
+                HttpResponse::Ok().json(serde_json::json!({
+                    "nombre": nombre,
+                    "cantidad": cantidad,
+                    "cantidad minima": cantidad_minima,
+                }))
+            }
+            Err(e) => HttpResponse::NotFound().json(MensajeRespuesta {
+                mensaje: format!("No se encontro el insumo '{}', \nError: '{}'", nombre, e),
+            }),
+        }
+    }
+
+    #[derive(Deserialize)]
+    pub struct EditarInsumoPayload {
+        nombre: Option<String>,
+        cantidad: Option<u32>,
+        cantidad_minima: Option<u32>,
+        costo: Option<u32>,
+    }
+
+    pub async fn editar_insumo_manejador(
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        path: web::Path<String>,
+        datos: web::Json<EditarInsumoPayload>,
+    ) -> impl Responder {
+        let nombre_actual = path.into_inner();
+        let body = datos.into_inner();
+
+        let mut almacen = app_info_almacen.lock().await;
+        match comandos::editar_insumo(
+            &mut almacen,
+            &nombre_actual,
+            body.nombre,
+            body.cantidad,
+            body.cantidad_minima,
+            body.costo,
+        ) {
+            Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
+                mensaje: format!("Insumo '{}' actualizado correctamente.", nombre_actual),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Error al actualizar el insumo '{}': {}", nombre_actual, e),
+            }),
+        }
+    }
+
+    pub async fn eliminar_insumo_manejador(
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        ruta: web::Path<String>,
+    ) -> impl Responder {
+        let nombre_insumo = ruta.into_inner();
+        let mut almacen = app_info_almacen.lock().await;
+
+        match comandos::eliminar_insumo(&mut almacen, &nombre_insumo) {
+            Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
+                mensaje: format!("Insumo '{}' eliminado correctamente.", nombre_insumo),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Error al eliminar el insumo '{}': {}", nombre_insumo, e),
+            }),
+        }
+    }
+
+    //    RECETAS:
+
+    pub async fn crear_receta_manejador(
+        datos: web::Json<DatosReceta>,
+        datos_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        datos_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+    ) -> impl Responder {
+        let entrada = datos.into_inner();
+
+        let almacen = datos_almacen.lock().await;
+        let mut libro = datos_libro.lock().await;
+
+        let receta_como_tupla = (
+            entrada.nombre.clone(),
+            entrada
+                .ingredientes
+                .into_iter()
+                .map(|i| (i.nombre, i.cantidad))
+                .collect(),
+        );
+
+        match comandos::crear_receta(receta_como_tupla, &almacen, &mut libro) {
+            Ok(mensaje) => HttpResponse::Ok().json(MensajeRespuesta { mensaje }),
+            Err(e) => HttpResponse::BadRequest().json(MensajeRespuesta {
+                mensaje: format!("No se pudo crear la receta: {}", e),
             }),
         }
     }
