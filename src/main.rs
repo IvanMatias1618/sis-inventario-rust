@@ -6,10 +6,11 @@
 // TAREAS:
 //    A: Trabajar en los endpoints de la app.
 //
+use actix_web::guard::GuardContext;
 
 use crate::actix::buscar_insumo_manejador;
 use crate::actix::crear_insumo_manejador;
-use actix_web::{App, HttpServer, http, web};
+use actix_web::{App, HttpResponse, HttpServer, guard, http, http::Method, web};
 use negocio::AppError;
 use std::env;
 use std::sync::Arc;
@@ -37,6 +38,7 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
         ver_todos_los_insumos_manejador,
     };
     use actix_cors::Cors;
+    use actix_web::http;
 
     //Cargamos de repositorio (inyeccion de dependencias).:
     let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
@@ -78,9 +80,9 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
         let recetas_info = servicio_de_recetas.clone();
 
         let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
-            .allowed_methods(vec!["GET", "POST", "OPTIONS"])
-            .allowed_headers(vec![http::header::CONTENT_TYPE])
+            .allowed_origin_fn(|_origin, _req_head| true)
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            .allowed_headers(vec![http::header::CONTENT_TYPE, http::header::ACCEPT])
             .supports_credentials()
             .max_age(3600);
 
@@ -97,7 +99,15 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
             .service(
                 web::resource("/insumos/valor").route(web::get().to(valor_de_insumo_manejador)),
             )
-            .service(web::resource("/insumos/editar").route(web::put().to(editar_insumo_manejador)))
+            .service(
+                web::resource("/insumos/editar/{nombre}")
+                    .route(web::put().to(editar_insumo_manejador))
+                    .route(
+                        web::route()
+                            .guard(guard::Method(http::Method::OPTIONS))
+                            .to(|| async { HttpResponse::Ok().finish() }),
+                    ),
+            )
             .service(
                 web::resource("/insumos/{insumo}")
                     .route(web::delete().to(eliminar_insumo_manejador)),
