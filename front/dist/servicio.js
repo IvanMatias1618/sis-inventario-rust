@@ -43,9 +43,9 @@ export const servicioDeInsumos = {
             return info;
         });
     },
-    editarInsumo(datos) {
+    editarInsumo(nombre, datos) {
         return __awaiter(this, void 0, void 0, function* () {
-            return fetch(`${url_base}/editar`, {
+            return fetch(`${url_base}/editar/${nombre}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(datos)
@@ -54,10 +54,9 @@ export const servicioDeInsumos = {
     },
     eliminarInsumo(nombre) {
         return __awaiter(this, void 0, void 0, function* () {
-            const respuesta = yield fetch(`${url_base}/${encodeURIComponent(nombre)}`);
-            if (!respuesta.ok)
-                throw new Error(`Error al eliminar el insumo: ${nombre}`);
-            return respuesta.json();
+            return fetch(`${url_base}/${encodeURIComponent(nombre)}`, {
+                method: 'DELETE'
+            });
         });
     }
 };

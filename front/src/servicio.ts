@@ -27,19 +27,19 @@ export const servicioDeInsumos: InsumosConsulta = {
     const respuesta = await fetch(`${url_base}/valor?consulta=${encodeURIComponent(nombre)}`);
     if (!respuesta.ok) throw new Error(`Error al buscar el insumo ${nombre}`);
     const info: InsumoValor = await respuesta.json();
-    return info; 
+    return info;
   },
-  
-  async editarInsumo(datos:InsumoEditado): Promise<Response> {
-    return fetch(`${url_base}/editar`, {
+
+  async editarInsumo(nombre: string, datos: InsumoEditado): Promise<Response> {
+    return fetch(`${url_base}/editar/${nombre}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(datos)
     });
   },
-  async eliminarInsumo(nombre: string): Promise<Response>{
-    const respuesta = await fetch(`${url_base}/${encodeURIComponent(nombre)}`);
-    if (!respuesta.ok) throw new Error(`Error al eliminar el insumo: ${nombre}`);
-    return respuesta.json();
+  async eliminarInsumo(nombre: string): Promise<Response> {
+    return fetch(`${url_base}/${encodeURIComponent(nombre)}`, {
+      method: 'DELETE'
+    });
   }
 };

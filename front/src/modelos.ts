@@ -6,7 +6,6 @@ export interface Insumo {
 }
 
 export interface InsumoEditado {
-  id: number,
   nombre?: string,
   cantidad?: number,
   cantidad_minima?: number,

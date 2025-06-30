@@ -157,8 +157,40 @@ form button:hover {
 /* VISIBILIDAD: */
 
 .formularios_insumos form,
-#formularios_insumos_todos {}
+#formularios_insumos_todos {
+  display: none;
+}
 
 .formularios_insumos .activo {
   display: block;
+}
+
+
+/*  MENSAJES: respuestas   */
+
+
+.oculto {
+  display: none;
+}
+
+.visible {
+  display: block;
+}
+
+.mensaje-respuesta {
+  margin-top: 4rem;
+  padding: 2rem;
+  width: fit-content;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.success {
+  color: var(--letras_opcion);
+  background-color: #99d98c;
+}
+
+.error {
+  color: var(--letras_color);
+  background-color: #ff8fa3;
 }
