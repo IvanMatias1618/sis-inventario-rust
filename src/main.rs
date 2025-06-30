@@ -389,8 +389,8 @@ pub mod cli {
         match comandos::valor_de_insumo(&insumo, almacen) {
             Ok(ins) => {
                 println!(
-                    "Nombre: {}, \nCantidad: {},\nCantidad minima: {}, \nPrecio por kilo: ${}",
-                    ins.0, ins.1, ins.2, ins.3
+                    "id: {}, \nNombre: {}, \nCantidad: {},\nCantidad minima: {}, \nPrecio por kilo: ${}",
+                    ins.0, ins.1, ins.2, ins.3, ins.4
                 );
                 return true;
             }
@@ -641,11 +641,10 @@ pub mod actix {
 
     pub async fn buscar_insumo_manejador(
         app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
-        ruta: web::Path<String>,
-        query: Option<web::Query<ParametrosConsulta>>,
+        query: web::Query<ParametrosConsulta>,
     ) -> impl Responder {
-        let nombre_insumo = match extraer_nombre_insumo(Some(ruta), query) {
-            Some(nombre) => nombre,
+        let nombre_insumo = match &query.consulta {
+            Some(nombre) => nombre.clone(),
             None => {
                 return HttpResponse::BadRequest().json(MensajeRespuesta {
                     mensaje: "Falta el parametro de busqueda".to_string(),
@@ -694,11 +693,13 @@ pub mod actix {
         };
         let almacen = app_info_almacen.lock().await;
         match comandos::valor_de_insumo(&nombre, &almacen) {
-            Ok((nombre, cantidad, cantidad_minima, costo)) => {
+            Ok((id, nombre, cantidad, cantidad_minima, costo)) => {
                 HttpResponse::Ok().json(serde_json::json!({
+                    "id": id,
                     "nombre": nombre,
                     "cantidad": cantidad,
-                    "cantidad minima": cantidad_minima,
+                    "cantidad_minima": cantidad_minima,
+                    "precio": costo,
                 }))
             }
             Err(e) => HttpResponse::NotFound().json(MensajeRespuesta {
@@ -865,7 +866,7 @@ pub mod comandos {
     pub fn valor_de_insumo(
         busqueda: &String,
         almacen: &ServicioDeAlmacen,
-    ) -> AppResult<(String, u32, u32, u32)> {
+    ) -> AppResult<(String, String, u32, u32, u32)> {
         return almacen.mostrar_insumo(busqueda);
     }
     pub fn receta_valor(
@@ -1872,9 +1873,13 @@ pub mod servicio {
             return self.repositorio.mostrar_todos();
         }
 
-        pub fn mostrar_insumo(&self, busqueda: &String) -> AppResult<(String, u32, u32, u32)> {
+        pub fn mostrar_insumo(
+            &self,
+            busqueda: &String,
+        ) -> AppResult<(String, String, u32, u32, u32)> {
             let insumo = self.obtener(busqueda)?;
             let insumo_tupla = (
+                insumo.obtener_id().clone(),
                 insumo.nombre().clone(),
                 insumo.obtener_cantidad(),
                 insumo.obtener_cantidad_minima(),

@@ -70,8 +70,8 @@ formBuscar.addEventListener('submit', (event) => __awaiter(void 0, void 0, void 
     if (!nombre)
         alert("El nombre esta vacio");
     servicioDeInsumos.buscarPorNombre(nombre).then((res) => __awaiter(void 0, void 0, void 0, function* () {
-        const data = yield res.json();
-        const resultado = formatearRespuesta(data, res.status);
+        const data = yield res.join(', ');
+        const resultado = formatearRespuesta({ message: data }, 200);
         renderRespuesta("buscar__insumo", resultado);
     })).catch(() => {
         const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -83,8 +83,8 @@ const formTodos = document.getElementById("insumos_todos");
 formTodos.addEventListener('submit', (event) => __awaiter(void 0, void 0, void 0, function* () {
     event.preventDefault();
     servicioDeInsumos.listar().then((res) => __awaiter(void 0, void 0, void 0, function* () {
-        const data = yield res.json();
-        const resultado = formatearRespuesta(data, res.status);
+        const data = yield res.join(', ');
+        const resultado = formatearRespuesta({ message: data }, 200);
         renderRespuesta("insumos_todos", resultado);
     })).catch(() => {
         const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -101,8 +101,8 @@ formValor.addEventListener('submit', (event) => __awaiter(void 0, void 0, void 0
     if (!nombre)
         alert("el nombre esta vacio");
     servicioDeInsumos.valorInsumo(nombre).then((res) => __awaiter(void 0, void 0, void 0, function* () {
-        const data = yield res.json();
-        const resultado = formatearRespuesta(data, res.status);
+        const info = `id: ${res.id} nombre: ${res.nombre}, cantidad: ${res.cantidad},cantidad minima: ${res.cantidad_minima}, precio por kilo: ${res.precio}`;
+        const resultado = formatearRespuesta({ message: info }, 200);
         renderRespuesta("valor_insumo", resultado);
     })).catch(() => {
         const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
