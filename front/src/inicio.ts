@@ -20,7 +20,7 @@
 
 import { servicioDeInsumos } from './servicio.js';
 import type { InsumosConsulta } from './contratos.js';
-import type { Insumo, InsumoEditado } from './modelos.js';
+import type { Insumo, InsumoEditado, InsumoValor } from './modelos.js';
 
 /* CREAR: Insumo   */
 
@@ -71,8 +71,8 @@ formBuscar.addEventListener('submit', async (event: SubmitEvent) => {
   if (!nombre) alert("El nombre esta vacio");
 
   servicioDeInsumos.buscarPorNombre(nombre).then(async res => {
-    const data = await res.json();
-    const resultado = formatearRespuesta(data, res.status);
+    const data = await res.join(', ');
+    const resultado = formatearRespuesta({message: data}, 200);
     renderRespuesta("buscar__insumo", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -89,8 +89,8 @@ const formTodos = document.getElementById("insumos_todos") as HTMLFormElement;
 formTodos.addEventListener('submit', async (event: SubmitEvent) => {
   event.preventDefault();
   servicioDeInsumos.listar().then(async res => {
-    const data = await res.json();
-    const resultado = formatearRespuesta(data, res.status);
+    const data = await res.join(', ');
+    const resultado = formatearRespuesta({message: data}, 200);
     renderRespuesta("insumos_todos", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -111,8 +111,8 @@ formValor.addEventListener('submit', async (event: SubmitEvent) => {
   if (!nombre) alert("el nombre esta vacio");
 
   servicioDeInsumos.valorInsumo(nombre).then(async res => {
-    const data = await res.json();
-    const resultado = formatearRespuesta(data, res.status);
+    const info = `id: ${res.id} nombre: ${res.nombre}, cantidad: ${res.cantidad},cantidad minima: ${res.cantidadMinima}, precio por kilo: ${res.precio}`;
+    const resultado = formatearRespuesta({message: info}, 200);
     renderRespuesta("valor_insumo", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -212,7 +212,7 @@ type ResultadoRespuesta = {
 };
 
 function renderRespuesta(nombreFormulario: string, resultado: ResultadoRespuesta) {
-  const form = document.getElementById(nombreFormulario);
+  const form = document.getElementById(nombreFormulario) as HTMLFormElement;
   const div = form.querySelector('[name="respuesta"]');
 
   if (div) {
