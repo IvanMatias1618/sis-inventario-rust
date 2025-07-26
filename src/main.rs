@@ -610,6 +610,7 @@ pub mod actix {
         ruta: Option<web::Path<String>>,
         query: Option<web::Query<ParametrosConsulta>>,
     ) -> Option<String> {
+        println!("Buenas noches");
         if let Some(consulta) = query {
             consulta.consulta.clone()
         } else if let Some(ruta_valor) = ruta {
@@ -623,6 +624,7 @@ pub mod actix {
         app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
         peticion: web::Json<CrearInsumoPeticion>,
     ) -> impl Responder {
+        println!("Hola Cati.");
         let mut almacen = app_info_almacen.lock().await;
         match almacen.añadir(
             peticion.nombre.clone(),
@@ -643,6 +645,7 @@ pub mod actix {
         app_info_almacen: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeAlmacen>>>,
         query: web::Query<ParametrosConsulta>,
     ) -> impl Responder {
+        println!("Gracias por tu atencion");
         let nombre_insumo = match &query.consulta {
             Some(nombre) => nombre.clone(),
             None => {
@@ -674,6 +677,7 @@ pub mod actix {
     pub async fn ver_todos_los_insumos_manejador(
         app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
     ) -> impl Responder {
+        println!("Espero hayas tenido un bonito dia");
         let almacen = app_info_almacen.lock().await;
         let resultados = comandos::ver_todos_los_insumos(&almacen);
         HttpResponse::Ok().json(resultados)
@@ -683,6 +687,7 @@ pub mod actix {
         app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
         query: web::Query<ParametrosConsulta>,
     ) -> impl Responder {
+        println!("Que tengas dulces sueños");
         let nombre = match &query.consulta {
             Some(nombre) => nombre.clone(),
             None => {
@@ -721,6 +726,7 @@ pub mod actix {
         path: web::Path<String>,
         datos: web::Json<EditarInsumoPayload>,
     ) -> impl Responder {
+        println!("y que GG te siga despertando como solo ella sabe");
         let nombre_actual = path.into_inner();
         let body = datos.into_inner();
 
@@ -746,6 +752,7 @@ pub mod actix {
         app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
         ruta: web::Path<String>,
     ) -> impl Responder {
+        println!("Y recuerda, los pinguinos son reales");
         let nombre_insumo = ruta.into_inner();
         let mut almacen = app_info_almacen.lock().await;
 

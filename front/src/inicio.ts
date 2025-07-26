@@ -72,7 +72,7 @@ formBuscar.addEventListener('submit', async (event: SubmitEvent) => {
 
   servicioDeInsumos.buscarPorNombre(nombre).then(async res => {
     const data = await res.join(', ');
-    const resultado = formatearRespuesta({message: data}, 200);
+    const resultado = formatearRespuesta({ message: data }, 200);
     renderRespuesta("buscar__insumo", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -89,8 +89,8 @@ const formTodos = document.getElementById("insumos_todos") as HTMLFormElement;
 formTodos.addEventListener('submit', async (event: SubmitEvent) => {
   event.preventDefault();
   servicioDeInsumos.listar().then(async res => {
-    const data = await res.join(', ');
-    const resultado = formatearRespuesta({message: data}, 200);
+    const data = res.join(`, `);
+    const resultado = formatearRespuesta({ message: data }, 200);
     renderRespuesta("insumos_todos", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
@@ -112,7 +112,7 @@ formValor.addEventListener('submit', async (event: SubmitEvent) => {
 
   servicioDeInsumos.valorInsumo(nombre).then(async res => {
     const info = `id: ${res.id} nombre: ${res.nombre}, cantidad: ${res.cantidad},cantidad minima: ${res.cantidadMinima}, precio por kilo: ${res.precio}`;
-    const resultado = formatearRespuesta({message: info}, 200);
+    const resultado = formatearRespuesta({ message: info }, 200);
     renderRespuesta("valor_insumo", resultado);
   }).catch(() => {
     const resultado = formatearRespuesta({ error: 'servidor no responde' }, 500);
