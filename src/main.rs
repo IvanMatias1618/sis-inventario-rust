@@ -113,6 +113,30 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
                     .route(web::delete().to(eliminar_insumo_manejador)),
             )
             .service(web::resource("/recetas/crear").route(web::post().to(crear_receta_manejador)))
+            .service(
+                web::resource("/recetas/todas")
+                    .route(web::get().to(actix::listar_recetas_manejador)),
+            )
+            .service(
+                web::resource("/recetas/buscar")
+                    .route(web::get().to(actix::buscar_receta_manejador)),
+            )
+            .service(
+                web::resource("recetas/valor").route(web::get().to(actix::valor_receta_manejador)),
+            )
+            .service(
+                web::resource("/recetas/editar/{nombre}")
+                    .route(web::put().to(actix::editar_receta_manejador))
+                    .route(
+                        web::route()
+                            .guard(guard::Method(http::Method::OPTIONS))
+                            .to(|| async { HttpResponse::Ok().finish() }),
+                    ),
+            )
+            .service(
+                web::resource("/recetas/{receta}")
+                    .route(web::delete().to(actix::eliminar_receta_manejador)),
+            )
     })
     .bind(("127.0.0.1", 8080))?
     .run()
@@ -793,6 +817,116 @@ pub mod actix {
                 mensaje: format!("No se pudo crear la receta: {}", e),
             }),
         }
+    }
+
+    pub async fn listar_recetas_manejador(
+        app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+    ) -> impl Responder {
+        let libro = app_info_libro.lock().await;
+        let resultados = comandos::ver_todos_las_recetas(&libro);
+        HttpResponse::Ok().json(resultados)
+    }
+
+    pub async fn buscar_receta_manejador(
+        app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+        query: web::Query<ParametrosConsulta>,
+    ) -> impl Responder {
+        let nombre = match &query.consulta {
+            Some(nom) => nom.clone(),
+            None => {
+                return HttpResponse::BadRequest().json(MensajeRespuesta {
+                    mensaje: "Falta el parametro de busqueda".to_string(),
+                });
+            }
+        };
+        let mut libro = app_info_libro.lock().await;
+        let resultados = comandos::buscar_receta(&libro, &nombre);
+        HttpResponse::Ok().json(resultados)
+    }
+
+    pub async fn valor_receta_manejador(
+        app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+        query: web::Query<ParametrosConsulta>,
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+    ) -> impl Responder {
+        let nombre = match &query.consulta {
+            Some(nombre) => nombre.clone(),
+            None => {
+                return HttpResponse::BadRequest().json(MensajeRespuesta {
+                    mensaje: "Falta el parametro 'consulta' ".to_string(),
+                });
+            }
+        };
+        let libro = app_info_libro.lock().await;
+        let almacen = app_info_almacen.lock().await;
+        match comandos::receta_valor(&nombre, &libro, &almacen) {
+            Ok((nombre, ingredientes, costo)) => {
+                let receta = Receta {
+                    nombre,
+                    ingredientes,
+                    costo,
+                };
+                HttpResponse::Ok().json(receta)
+            }
+            Err(e) => HttpResponse::BadRequest().json(MensajeRespuesta {
+                mensaje: format!("no se encontro la receta: {}\n Error: {}", nombre, e),
+            }),
+        }
+    }
+
+    pub async fn editar_receta_manejador(
+        app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        path: web::Path<String>,
+        datos: web::json<EditarRecetaPayLoad>,
+        app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+    ) -> impl Responder {
+        let nombre = path.into_inner();
+        let body = datos.into_inner();
+
+        //Aqui puse el dereferenciador '*' porque me decia que se estaban recibiendo GaurMutex.
+        //
+        let mut almacen = app_info_almacen.lock().await;
+        let mut libro = app_info_libro.lock().await;
+        let servicio: &mut ServivioDeRecetas = &mut *libro;
+        match comandos::editar_receta(servicio, &nombre, body.nombre, body.ingredientes, &almacen) {
+            Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
+                mensaje: format!("Receta: {}, Actualizada correctamente", nombre),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Error al actualizar la receta: {}.\nError: {}", nombre, e),
+            }),
+        }
+    }
+
+    pub async fn eliminar_receta_manejador(
+        app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
+        receta: web::Path<String>,
+    ) -> impl Responder {
+        let mut libro = app_info_libro.lock().await;
+        let servicio: &mut ServicioDeRecetas = &mut *libro;
+        let nombre = receta.into_inner();
+
+        match comandos::eliminar_receta(servicio, &nombre) {
+            Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
+                mensaje: format!("Receta: {}, Eliminada correctamente.", nombre),
+            }),
+            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
+                mensaje: format!("Receta: {}, no eliminada \nError: {}", nombre, e),
+            }),
+        }
+    }
+
+    #[derive(Deserialize)]
+    struct EditarRecetaPayLoad {
+        nombre: Option<String>,
+        ingredientes: Option<Vec<(String, u32)>>,
+    }
+
+    #[derive(Serialize)]
+    struct Receta {
+        nombre: String,
+        ingredientes: Vec<(String, u32)>,
+        costo: f32,
     }
 }
 
