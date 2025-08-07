@@ -877,7 +877,7 @@ pub mod actix {
     pub async fn editar_receta_manejador(
         app_info_almacen: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
         path: web::Path<String>,
-        datos: web::json<EditarRecetaPayLoad>,
+        datos: web::Json<EditarRecetaPayLoad>,
         app_info_libro: web::Data<Arc<Mutex<ServicioDeRecetas>>>,
     ) -> impl Responder {
         let nombre = path.into_inner();
@@ -887,7 +887,7 @@ pub mod actix {
         //
         let mut almacen = app_info_almacen.lock().await;
         let mut libro = app_info_libro.lock().await;
-        let servicio: &mut ServivioDeRecetas = &mut *libro;
+        let servicio: &mut ServicioDeRecetas = &mut *libro;
         match comandos::editar_receta(servicio, &nombre, body.nombre, body.ingredientes, &almacen) {
             Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
                 mensaje: format!("Receta: {}, Actualizada correctamente", nombre),
@@ -917,16 +917,16 @@ pub mod actix {
     }
 
     #[derive(Deserialize)]
-    struct EditarRecetaPayLoad {
+    pub struct EditarRecetaPayLoad {
         nombre: Option<String>,
         ingredientes: Option<Vec<(String, u32)>>,
     }
 
     #[derive(Serialize)]
-    struct Receta {
+    pub struct Receta {
         nombre: String,
         ingredientes: Vec<(String, u32)>,
-        costo: f32,
+        costo: f64,
     }
 }
 
