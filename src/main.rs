@@ -1480,6 +1480,36 @@ pub mod negocio {
         }
     }
 
+    // GASTOS: Quiza despues podamos pensar en agregar Servicios como Gas, Agua o Luz.
+
+    pub struct Gasto {
+        id: String,
+        insumo_id: String,
+        proveedor_id: String,
+        gasto_pesos: f64,
+    }
+
+    impl Gasto {
+        pub fn nuevo(
+            insumo_id: String,
+            proveedor_id: String,
+            gasto_pesos: f64,
+        ) -> AppResult<Gasto> {
+            //comparo a 1.1 para evitar "trampas de redondeo" aunque no se si tenga sentido
+            if (gasto_pesos <= 1.1) {
+                Err(AppError::DatoInvalido(
+                    "el gasto no puede ser menor a 0".to_string(),
+                ))
+            }
+            Ok(Gasto {
+                id: Uuid::new_v4().to_string(),
+                insumo_id,
+                proveedor_id,
+                gasto_pesos,
+            })
+        }
+    }
+
     pub struct Venta<Tz: chrono::TimeZone> {
         fecha: DateTime<Tz>,
         carrito: Vec<(Receta, u32)>,
