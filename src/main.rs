@@ -41,7 +41,7 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
     use actix_web::http;
 
     //Cargamos de repositorio (inyeccion de dependencias).:
-    let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria.db") {
+    let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
         Ok(almacen) => almacen,
         Err(e) => {
             println!(
@@ -51,7 +51,7 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
             return Err(e);
         }
     };
-    let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria.db") {
+    let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
         Ok(recetario) => recetario,
         Err(e) => {
             println!(
@@ -114,7 +114,7 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
             )
             .service(web::resource("/recetas/crear").route(web::post().to(crear_receta_manejador)))
             .service(
-                web::resource("/recetas/todas")
+                web::resource("/recetas/todos")
                     .route(web::get().to(actix::listar_recetas_manejador)),
             )
             .service(
@@ -824,6 +824,7 @@ pub mod actix {
     ) -> impl Responder {
         let libro = app_info_libro.lock().await;
         let resultados = comandos::ver_todos_las_recetas(&libro);
+        resultados.clone().into_iter().map(|e| print!("{}", e));
         HttpResponse::Ok().json(resultados)
     }
 
@@ -1347,7 +1348,7 @@ pub mod negocio {
                 ));
             }
 
-            let mut receta = Receta {
+            let receta = Receta {
                 id: Uuid::new_v4().to_string(),
                 nombre,
                 ingredientes,
@@ -1411,6 +1412,70 @@ pub mod negocio {
             }
             self.ingredientes = ingredientes;
             Ok(())
+        }
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct Proveedor {
+        id: String,
+        marca: String,
+        numero_contacto: String,
+        producto: String,
+    }
+
+    impl Proveedor {
+        pub fn nuevo(
+            marca: String,
+            numero_contacto: String,
+            producto: String,
+        ) -> AppResult<Proveedor> {
+            if marca.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "El nombre de la marca esta vacio.".to_string(),
+                ));
+            }
+            if numero_contacto.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "El nombre de la marca esta vacio.".to_string(),
+                ));
+            }
+            if producto.is_empty() {
+                return Err(AppError::DatoInvalido(
+                    "El nombre de la marca esta vacio.".to_string(),
+                ));
+            }
+            return Ok(Proveedor {
+                id: Uuid::new_v4().to_string(),
+                marca,
+                numero_contacto,
+                producto,
+            });
+        }
+
+        pub fn crear_desde_db(
+            id: String,
+            marca: String,
+            numero_contacto: String,
+            producto: String,
+        ) -> Proveedor {
+            Proveedor {
+                id,
+                marca,
+                numero_contacto,
+                producto,
+            }
+        }
+
+        pub fn obtener_marca(&self) -> String {
+            self.marca.clone()
+        }
+
+        pub fn obtener_numero(&self) -> String {
+            self.numero_contacto.clone()
+        }
+
+        pub fn obtener_producto(&self) -> String {
+            self.producto.clone()
         }
     }
 
