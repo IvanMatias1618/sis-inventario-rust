@@ -1,10 +1,7 @@
-// NOTAS: {
-//    1.- Eliminar recetas  de los insumos que son eliminados.
-//    2.- Queda pendiente la consulta de insumo_en_recetas dentro de repositorio.
+// TAREAS: {
+//    A: Eliminar recetas  de los insumos que son eliminados.
+//    B: Queda pendiente la consulta de insumo_en_recetas dentro de repositorio.
 // }
-//
-// TAREAS:
-//    A: Trabajar en los endpoints de la app.
 //
 use actix_web::guard::GuardContext;
 
@@ -1961,8 +1958,8 @@ pub mod repositorio {
     }
 
     pub trait BaseDatos<T> {
-        fn crear(&mut self, receta: T) -> AppResult<()>;
-        fn editar(&mut self, receta: T) -> AppResult<()>;
+        fn crear(&mut self, entidad: T) -> AppResult<()>;
+        fn editar(&mut self, entidad: T) -> AppResult<()>;
         fn eliminar(&self, entidad_id: &str) -> AppResult<()>;
         fn listar(&self) -> AppResult<Vec<String>>;
         fn obtener(&self, busqueda: &str) -> AppResult<T>;
@@ -2494,7 +2491,7 @@ pub mod servicio {
         ) -> AppResult<()> {
             self.existe(nombre_receta)?;
             let receta = self.obtener(nombre_receta)?;
-            for uno in 0..cantidad {
+            for _ in 0..cantidad {
                 for (id, cant) in receta.ingredientes() {
                     let nombre = almacen.obtener_nombre_con_id(&id)?;
                     let mut insumo = almacen.obtener(&nombre)?;
@@ -2511,11 +2508,11 @@ pub mod servicio {
     }
 
     pub struct ServicioDeProveedores {
-        repositorio: Box<dyn BaseDatos<T>>,
+        repositorio: Box<dyn BaseDatos<negocio::Proveedor>>,
     }
 
     impl ServicioDeProveedores {
-        pub fn nuevo(repositorio: Box<dyn BaseDatos<T>>) -> ServicioDeProveedores {
+        pub fn nuevo(repositorio: Box<dyn BaseDatos<negocio::Proveedor>>) -> ServicioDeProveedores {
             ServicioDeProveedores { repositorio }
         }
 
@@ -2537,7 +2534,7 @@ pub mod servicio {
             numero: String,
             producto: String,
         ) -> AppResult<()> {
-            if !self.existe(&marca) {
+            if let Ok(_) = self.existe(&marca) {
                 return Err(AppError::DatoInvalido(format!(
                     "El proveedor: {}, ya existe",
                     marca
@@ -2589,7 +2586,7 @@ pub mod servicio {
 
         pub fn existe(&self, nombre: &str) -> AppResult<bool> {
             let lista = self.listar()?;
-            if lista.contains(&nombre.to_String()) {
+            if lista.contains(&nombre.to_string()) {
                 return Ok(true);
             }
             return Ok(false);
@@ -2600,7 +2597,7 @@ pub mod servicio {
         }
 
         pub fn eliminar(&mut self, marca: &str) -> AppResult<()> {
-            if !self.existe(marca) {
+            if let Ok(true) = self.existe(marca) {
                 return Err(AppError::DatoInvalido(format!(
                     "No existe el proveedor: {}",
                     marca
@@ -2611,13 +2608,13 @@ pub mod servicio {
         }
 
         pub fn obtener(&self, busqueda: &str) -> AppResult<negocio::Proveedor> {
-            if !self.existe(busqueda) {
+            if let Ok(true) = self.existe(busqueda) {
                 return Err(AppError::DatoInvalido(format!(
                     "El proveedor: {}, no existe",
                     busqueda
                 )));
             }
-            Ok(self.repositorio.obtener(busqueda))
+            Ok(self.repositorio.obtener(busqueda)?)
         }
     }
 }
