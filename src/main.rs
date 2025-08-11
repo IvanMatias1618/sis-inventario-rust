@@ -1444,12 +1444,12 @@ pub mod negocio {
                     "El nombre de la marca esta vacio.".to_string(),
                 ));
             }
-            return Ok(Proveedor {
+            Ok(Proveedor {
                 id: Uuid::new_v4().to_string(),
                 marca,
                 numero_contacto,
                 producto,
-            });
+            })
         }
 
         pub fn crear_desde_db(
@@ -1464,6 +1464,10 @@ pub mod negocio {
                 numero_contacto,
                 producto,
             }
+        }
+
+        pub fn obtener_id(&self) -> String {
+            self.id.clone()
         }
 
         pub fn obtener_marca(&self) -> String {
@@ -1524,7 +1528,7 @@ pub mod repositorio {
     // Usamos Traits para abstraer la implimentacion de estas funciones y sea una parte modular.
 
     use crate::{
-        negocio::{self, AppError, AppResult, Insumo, Receta},
+        negocio::{self, AppError, AppResult, Insumo, Proveedor, Receta},
         servicio::*,
     };
     use rusqlite::{Connection, Error, params};
@@ -1955,6 +1959,172 @@ pub mod repositorio {
             Ok(insumos)
         }
     }
+
+    pub trait BaseDatos<T> {
+        fn crear(&mut self, receta: T) -> AppResult<()>;
+        fn editar(&mut self, receta: T) -> AppResult<()>;
+        fn eliminar(&self, entidad_id: &str) -> AppResult<()>;
+        fn listar(&self) -> AppResult<Vec<String>>;
+        fn obtener(&self, busqueda: &str) -> AppResult<T>;
+        fn id_con_nombre(&self, nombre: &str) -> AppResult<String>;
+        fn nombre_con_id(&self, id: &str) -> AppResult<String>;
+    }
+
+    pub struct ProveedoresDB {
+        conexion: Arc<Mutex<Connection>>,
+    }
+
+    impl ProveedoresDB {
+        pub fn nuevo(ruta: &str) -> AppResult<ProveedoresDB> {
+            let conexion = Connection::open(ruta)?;
+            conexion.execute(
+                "CREATE TEBLE IF NOT EXISTS proveedores (
+                    id TEXT NOT NULL,
+                    marca TEXT NOT NULL,
+                    numero TEXT NOT NULL,
+                    producto_id TEXT NOT NULL,
+                    PRIMARY KEY (producto_id),
+                    FOREIGN KEY (producto_id) REFERENCES insumos(id) ON DELETE CASCADE
+                )",
+                [],
+            )?;
+            Ok(ProveedoresDB {
+                conexion: Arc::new(Mutex::new(conexion)),
+            })
+        }
+    }
+
+    impl BaseDatos<Proveedor> for ProveedoresDB {
+        fn crear(&mut self, datos: Proveedor) -> AppResult<()> {
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            con.execute(
+                "INSERT INTO proveedores (id, marca, numero, producto_id)
+                VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    datos.obtener_id(),
+                    datos.obtener_marca(),
+                    datos.obtener_numero(),
+                    datos.obtener_producto()
+                ],
+            )?;
+            Ok(())
+        }
+        fn editar(&mut self, datos: Proveedor) -> AppResult<()> {
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion {}", e))
+            })?;
+            let afectados = con.execute(
+                "UPDATE proveedores SET marca = ?1, numero = ?2, producto =?3 WHERE id = ?4",
+                params![
+                    datos.obtener_marca(),
+                    datos.obtener_numero(),
+                    datos.obtener_producto(),
+                    datos.obtener_id()
+                ],
+            )?;
+            if afectados == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "No se guardaron los cambios en: {}",
+                    datos.obtener_marca()
+                )));
+            }
+            Ok(())
+        }
+
+        fn eliminar(&self, nombre: &str) -> AppResult<()> {
+            let id = self.id_con_nombre(nombre)?;
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion:{}", e))
+            })?;
+            let funciono = con.execute("DELETE FROM proveedores WHERE id =?", params![id])?;
+            if funciono == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "El proveedor: {}\n no fue modificado.",
+                    nombre
+                )));
+            }
+            Ok(())
+        }
+
+        fn id_con_nombre(&self, nombre: &str) -> AppResult<String> {
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let id: String = conexion_segura
+                .query_row(
+                    "SELECT id FROM proveedores WHERE nombre = ?",
+                    params![nombre],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => AppError::DatoInvalido(format!(
+                        "En obtener id: No se encontro el provedor : {}",
+                        nombre
+                    )),
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(id)
+        }
+
+        fn nombre_con_id(&self, id: &str) -> AppResult<String> {
+            let conexion_segura = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            let nombre = conexion_segura
+                .query_row(
+                    "SELECT nombre FROM insumos WHERE id = ?",
+                    params![id],
+                    |fila| fila.get(0),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::DatoInvalido(format!("No se encontro el insumo con id: {}", id))
+                    }
+                    _ => AppError::DbError(e),
+                })?;
+            Ok(nombre)
+        }
+
+        fn obtener(&self, busqueda: &str) -> AppResult<Proveedor> {
+            let id = self.id_con_nombre(busqueda)?;
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            con.query_row(
+                "SELECT id, marca, numero, producto FROM proveedores WHERE id = ?",
+                params![id],
+                |fila| {
+                    Ok(Proveedor::crear_desde_db(
+                        fila.get(0)?,
+                        fila.get(1)?,
+                        fila.get(2)?,
+                        fila.get(3)?,
+                    ))
+                },
+            )
+            .map_err(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => {
+                    AppError::DatoInvalido(format!("Proveedor: {}", busqueda))
+                }
+                _ => AppError::DbError(e),
+            })
+        }
+
+        fn listar(&self) -> AppResult<Vec<String>> {
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("error al bloquear la conexion: {}", e))
+            })?;
+            let mut accion = con.prepare("SELECT marca FROM proveedores ORDER BY nombre")?;
+            let nombres_iter = accion.query_map([], |fila| fila.get(0))?;
+            let mut nombres = Vec::new();
+            for nombre in nombres_iter {
+                nombres.push(nombre?);
+            }
+            Ok(nombres)
+        }
+    }
 }
 pub mod servicio {
 
@@ -1962,7 +2132,7 @@ pub mod servicio {
     // Además provee informacion de consulta para los comandos.
     //
     use crate::negocio::{self, AppError, AppResult, Insumo, Receta};
-    use crate::repositorio::{Bodega, RecetasEnMemoria};
+    use crate::repositorio::{BaseDatos, Bodega, RecetasEnMemoria};
     use strsim::levenshtein;
 
     pub struct ServicioDeAlmacen {
@@ -2337,6 +2507,117 @@ pub mod servicio {
         }
         pub fn insumo_en_recetas(&self, insumo_id: &String) -> AppResult<Vec<String>> {
             return self.repositorio.insumo_en_recetas(insumo_id);
+        }
+    }
+
+    pub struct ServicioDeProveedores {
+        repositorio: Box<dyn BaseDatos<T>>,
+    }
+
+    impl ServicioDeProveedores {
+        pub fn nuevo(repositorio: Box<dyn BaseDatos<T>>) -> ServicioDeProveedores {
+            ServicioDeProveedores { repositorio }
+        }
+
+        pub fn reinsertar(
+            &mut self,
+            id: String,
+            marca: String,
+            numero: String,
+            producto: String,
+        ) -> AppResult<()> {
+            let proveedor = negocio::Proveedor::crear_desde_db(id, marca, numero, producto);
+            self.repositorio.crear(proveedor)?;
+            Ok(())
+        }
+
+        pub fn agregar(
+            &mut self,
+            marca: String,
+            numero: String,
+            producto: String,
+        ) -> AppResult<()> {
+            if !self.existe(&marca) {
+                return Err(AppError::DatoInvalido(format!(
+                    "El proveedor: {}, ya existe",
+                    marca
+                )));
+            }
+
+            let proveedor = negocio::Proveedor::nuevo(marca, numero, producto)?;
+            self.repositorio.crear(proveedor)?;
+            Ok(())
+        }
+
+        pub fn nombre_con_id(&self, id: String) -> AppResult<String> {
+            return self.repositorio.nombre_con_id(&id);
+        }
+
+        pub fn id_con_nombre(&self, nombre: String) -> AppResult<String> {
+            return self.repositorio.id_con_nombre(&nombre);
+        }
+
+        pub fn buscar(&self, busqueda: &String) -> AppResult<Vec<String>> {
+            let proveedores = self.repositorio.listar()?;
+            let mut resultados: Vec<String> = Vec::new();
+            //Primera Busqueda por contains:
+            resultados = proveedores
+                .clone()
+                .into_iter()
+                .filter(|proveedor| proveedor.contains(busqueda))
+                .collect();
+            if !resultados.is_empty() {
+                return Ok(resultados);
+            }
+            //Segunda busqueda
+            let probables = proveedores
+                .into_iter()
+                .min_by_key(|proveedor| levenshtein(proveedor, busqueda));
+            match probables {
+                Some(opcion) => {
+                    resultados.push(opcion.clone());
+                    Ok(resultados)
+                }
+                None => {
+                    return Err(AppError::DatoInvalido(format!(
+                        "No se encontro el proveedor: {}",
+                        busqueda
+                    )));
+                }
+            }
+        }
+
+        pub fn existe(&self, nombre: &str) -> AppResult<bool> {
+            let lista = self.listar()?;
+            if lista.contains(&nombre.to_String()) {
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        pub fn listar(&self) -> AppResult<Vec<String>> {
+            return self.repositorio.listar();
+        }
+
+        pub fn eliminar(&mut self, marca: &str) -> AppResult<()> {
+            if !self.existe(marca) {
+                return Err(AppError::DatoInvalido(format!(
+                    "No existe el proveedor: {}",
+                    marca
+                )));
+            }
+            self.repositorio.eliminar(marca)?;
+            Ok(())
+        }
+
+        pub fn obtener(&self, busqueda: &str) -> AppResult<negocio::Proveedor> {
+            if !self.existe(busqueda) {
+                return Err(AppError::DatoInvalido(format!(
+                    "El proveedor: {}, no existe",
+                    busqueda
+                )));
+            }
+            Ok(self.repositorio.obtener(busqueda))
         }
     }
 }
