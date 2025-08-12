@@ -2017,6 +2017,10 @@ pub mod repositorio {
             Ok(insumos)
         }
     }
+    // Esta base de datos es para entidades que no deben mutar. podriamos agregar una funcion de una consulta SQL?
+    pub trait BaseDatosNoModificable<T> {
+        fn crear(&mut self, entidad: T) -> AppResult<()>;
+    }
 
     pub trait BaseDatos<T> {
         fn crear(&mut self, entidad: T) -> AppResult<()>;
@@ -2055,7 +2059,7 @@ pub mod repositorio {
         }
     }
 
-    impl BaseDatos<negocio::Gastos> for GastosDB {
+    impl BaseDatosNoModificable<negocio::Gastos> for GastosDB {
         fn crear(&mut self, datos: Gastos) -> AppResult<()> {
             let con = self.conexion.lock().map_err(|e| {
                 AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
@@ -2070,27 +2074,6 @@ pub mod repositorio {
                     datos.gasto_pesos()
                 ],
             )?;
-            Ok(())
-        }
-        fn editar(&mut self, datos: Gastos) -> AppResult<()> {
-            let con = self.conexion.lock().map_err(|e| {
-                AppError::ErrorPersonal(format!("Error al bloquear la conexion {}", e))
-            })?;
-            let afectados = con.execute(
-                "UPDATE proveedores SET marca = ?1, numero = ?2, producto =?3 WHERE id = ?4",
-                params![
-                    datos.obtener_marca(),
-                    datos.obtener_numero(),
-                    datos.obtener_producto(),
-                    datos.obtener_id()
-                ],
-            )?;
-            if afectados == 0 {
-                return Err(AppError::ErrorPersonal(format!(
-                    "No se guardaron los cambios en: {}",
-                    datos.obtener_marca()
-                )));
-            }
             Ok(())
         }
     }
