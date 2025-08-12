@@ -1482,6 +1482,7 @@ pub mod negocio {
 
     // GASTOS: Quiza despues podamos pensar en agregar Servicios como Gas, Agua o Luz.
 
+    #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct Gasto {
         id: String,
         insumo_id: String,
@@ -1496,10 +1497,10 @@ pub mod negocio {
             gasto_pesos: f64,
         ) -> AppResult<Gasto> {
             //comparo a 1.1 para evitar "trampas de redondeo" aunque no se si tenga sentido
-            if (gasto_pesos <= 1.1) {
-                Err(AppError::DatoInvalido(
-                    "el gasto no puede ser menor a 0".to_string(),
-                ))
+            if gasto_pesos <= 1.1 {
+                return Err(AppError::DatoInvalido(format!(
+                    "El costo del producto no puede ser 0 o menor a 1.1"
+                )));
             }
             Ok(Gasto {
                 id: Uuid::new_v4().to_string(),
@@ -1507,6 +1508,36 @@ pub mod negocio {
                 proveedor_id,
                 gasto_pesos,
             })
+        }
+
+        pub fn crear_desde_db(
+            id: String,
+            insumo_id: String,
+            proveedor_id: String,
+            gasto_pesos: f64,
+        ) -> Gasto {
+            Gasto {
+                id,
+                insumo_id,
+                proveedor_id,
+                gasto_pesos,
+            }
+        }
+
+        pub fn id(&self) -> String {
+            self.id.clone()
+        }
+
+        pub fn insumo_id(&self) -> String {
+            self.insumo_id.clone()
+        }
+
+        pub fn proveedor_id(&self) -> String {
+            self.proveedor_id.clone()
+        }
+
+        pub fn gasto_pesos(&self) -> String {
+            self.gasto_pesos.clone()
         }
     }
 
@@ -1537,7 +1568,7 @@ pub mod negocio {
                 return Err(AppError::DatoInvalido("El rol esta vacio".to_string()));
             }
 
-            use bcrypt::{hash, verify};
+            use bcrypt::hash;
             let contraseña = hash(psswd, 12).expect("Error al encriptar la contraseña");
             Ok(Empleado {
                 id: Uuid::new_v4(),
@@ -1995,6 +2026,73 @@ pub mod repositorio {
         fn obtener(&self, busqueda: &str) -> AppResult<T>;
         fn id_con_nombre(&self, nombre: &str) -> AppResult<String>;
         fn nombre_con_id(&self, id: &str) -> AppResult<String>;
+    }
+
+    pub struct GastoDB {
+        conexion: Arc<Mutex<Connection>>,
+    }
+
+    impl GastoDB {
+        pub fn nuevo(ruta: &str) -> AppResult<GastosDB> {
+            let conexion = Connection::open(ruta)?;
+            conexion.execute(
+                "CREATE TEBLE IF NOT EXISTS gastos (
+                    id TEXT NOT NULL,
+                    insumo_id TEXT NOT NULL,
+                    proveedor_id TEXT NOT NULL,
+                    gasto_pesos REAL NOT NULL,
+                    PRIMARY KEY (insumo_id),
+                    PRIMARY KEY (proveedor_id),
+                    FOREIGN KEY (insumo_id) REFERENCES insumos(id) ON DELETE CASCADE,
+                    FOREIGN KEY (producto_id) REFERENCES proveedores(id) ON DELETE CASCADE
+                    
+                )",
+                [],
+            )?;
+            Ok(GastosDB {
+                conexion: Arc::new(Mutex::new(conexion)),
+            })
+        }
+    }
+
+    impl BaseDatos<negocio::Gastos> for GastosDB {
+        fn crear(&mut self, datos: Gastos) -> AppResult<()> {
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion: {}", e))
+            })?;
+            con.execute(
+                "INSERT INTO gastos (id, insumo_id, proveedor_id, gasto_pesos)
+                VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    datos.id(),
+                    datos.insumo_id(),
+                    datos.proveedor_id(),
+                    datos.gasto_pesos()
+                ],
+            )?;
+            Ok(())
+        }
+        fn editar(&mut self, datos: Gastos) -> AppResult<()> {
+            let con = self.conexion.lock().map_err(|e| {
+                AppError::ErrorPersonal(format!("Error al bloquear la conexion {}", e))
+            })?;
+            let afectados = con.execute(
+                "UPDATE proveedores SET marca = ?1, numero = ?2, producto =?3 WHERE id = ?4",
+                params![
+                    datos.obtener_marca(),
+                    datos.obtener_numero(),
+                    datos.obtener_producto(),
+                    datos.obtener_id()
+                ],
+            )?;
+            if afectados == 0 {
+                return Err(AppError::ErrorPersonal(format!(
+                    "No se guardaron los cambios en: {}",
+                    datos.obtener_marca()
+                )));
+            }
+            Ok(())
+        }
     }
 
     pub struct ProveedoresDB {
