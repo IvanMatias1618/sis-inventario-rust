@@ -166,6 +166,10 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
                 web::resource("/usuarios/{usuario}")
                     .route(web::delete().to(actix::eliminar_usuario_manejador)),
             )
+            .service(
+                web::resource("/usuarios/iniciar_sesion")
+                    .route(web::post().to(actix::iniciar_sesion_manejador)),
+            )
     })
     .bind(("127.0.0.1", 8080))?
     .run()
@@ -635,11 +639,20 @@ pub mod actix {
         pub contra: String,
     }
 
+    #[derive(Deserialize)]
+    pub struct VerificarUsuario {
+        nombre: String,
+        contra: String,
+    }
+
     pub async fn crear_usuario_manejador(
         app_info_repositorio: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeUsuarios>>>,
         peticion: web::Json<CrearUsuarioPeticion>,
     ) -> impl Responder {
-        println!("641");
+        println!(
+            "nombre:  {}, rol: {}, admin: {}",
+            peticion.nombre, peticion.rol, peticion.contra
+        );
         let mut repositorio = app_info_repositorio.lock().await;
         match comandos::crear_usuario(
             (&peticion.nombre, &peticion.contra, &peticion.rol),
@@ -648,8 +661,24 @@ pub mod actix {
             Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
                 mensaje: format!("usuario: {}, creado exitosamente", peticion.nombre),
             }),
-            Err(e) => HttpResponse::InternalServerError().json(MensajeRespuesta {
-                mensaje: format!("Error al crear usuario: {}", e),
+            Err(e) => {
+                println!("{}: 652", e);
+                return HttpResponse::InternalServerError().json(MensajeRespuesta {
+                    mensaje: format!("Error al crear usuario: {}", e),
+                });
+            }
+        }
+    }
+
+    pub async fn iniciar_sesion_manejador(
+        app_info_repositorio: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeUsuarios>>>,
+        query: web::Query<VerificarUsuario>,
+    ) -> impl Responder {
+        let mut repo = app_info_repositorio.lock().await;
+        match comandos::iniciar_sesion(&mut repo, &query.nombre, &query.contra) {
+            Ok(token) => HttpResponse::Ok().json(token),
+            Err(e) => HttpResponse::BadRequest().json(MensajeRespuesta {
+                mensaje: format!("Error de validacion, {}", e),
             }),
         }
     }
@@ -701,7 +730,8 @@ pub mod actix {
         };
         let repo = app_info_repositorio.lock().await;
         match comandos::valor_de_usuario(&repo, &nombre) {
-            Ok((nombre, rol)) => HttpResponse::Ok().json(serde_json::json!({
+            Ok((id, nombre, rol)) => HttpResponse::Ok().json(serde_json::json!({
+                "id": id,
                 "nombre": nombre,
                 "rol": rol,
             })),
@@ -712,13 +742,13 @@ pub mod actix {
     }
 
     pub async fn eliminar_usuario_manejador(
-        app_info_repositorio: web::Data<Arc<Mutex<ServicioDeAlmacen>>>,
+        app_info_repositorio: web::Data<Arc<Mutex<ServicioDeUsuarios>>>,
         ruta: web::Path<String>,
     ) -> impl Responder {
         let nombre_insumo = ruta.into_inner();
-        let mut almacen = app_info_repositorio.lock().await;
+        let mut repo = app_info_repositorio.lock().await;
 
-        match comandos::eliminar_insumo(&mut almacen, &nombre_insumo) {
+        match comandos::eliminar_usuario(&mut repo, &nombre_insumo) {
             Ok(_) => HttpResponse::Ok().json(MensajeRespuesta {
                 mensaje: format!("Insumo '{}' eliminado correctamente.", nombre_insumo),
             }),
@@ -757,7 +787,6 @@ pub mod actix {
     pub struct MensajeRespuesta {
         pub mensaje: String,
     }
-
     pub fn extraer_nombre_insumo(
         ruta: Option<web::Path<String>>,
         query: Option<web::Query<ParametrosConsulta>>,
@@ -1068,10 +1097,13 @@ pub mod comandos {
             usuario.2.to_string(),
         ) {
             Ok(_) => Ok(format!("Se ha creado el usuario: {}", usuario.0)),
-            Err(e) => Err(AppError::ErrorPersonal(format!(
-                "Error al crear el usuario: {}\n Error {}",
-                usuario.0, e
-            ))),
+            Err(e) => {
+                println!("{}1074", e);
+                return Err(AppError::ErrorPersonal(format!(
+                    "Error al crear el usuario: {}\n Error {}",
+                    usuario.0, e
+                )));
+            }
         };
     }
 
@@ -1080,8 +1112,8 @@ pub mod comandos {
         usuario: &str,
         contra: &str,
     ) -> AppResult<String> {
-        return match repositorio.verificar_usuario(contra, usuario.to_string()) {
-            Ok(_) => Ok(String::from("Gracias por iniciar sesion correctamente")),
+        return match repositorio.verificar_usuario(contra, usuario) {
+            Ok(token) => Ok(token),
             Err(_) => Err(AppError::DatoInvalido(format!(
                 "Querid@: {}, contra incorrecta, por favor vuelve a intentar.",
                 usuario
@@ -1115,9 +1147,9 @@ pub mod comandos {
     pub fn valor_de_usuario(
         repo: &ServicioDeUsuarios,
         usuario: &str,
-    ) -> AppResult<(String, String)> {
+    ) -> AppResult<(String, String, String)> {
         return match repo.obtener(usuario) {
-            Ok((nombre, rol)) => Ok((nombre, rol)),
+            Ok((id, nombre, rol)) => Ok((id, nombre, rol)),
             Err(e) => Err(AppError::ErrorPersonal(format!(
                 "Error al encontrar el usuario: {}, error: {}",
                 usuario, e
@@ -1808,15 +1840,15 @@ pub mod negocio {
             self.rol.clone()
         }
 
-        pub fn verificar_hash(&self, contra: &str) -> AppResult<()> {
-            bcrypt::verify(contra, &self.contra_token);
-            let psswd = hash(contra, 12).expect("Error al encriptar la contraseña");
-            if psswd == self.contra_token {
-                return Ok(());
+        pub fn verificar_hash(&self, contra: &str) -> AppResult<String> {
+            match bcrypt::verify(contra, &self.contra_token) {
+                Ok(true) => Ok(self.generar_token()),
+                Ok(false) => Err(AppError::DatoInvalido("Contraseña incorrecta.".to_string())),
+                Err(e) => Err(AppError::DatoInvalido(format!(
+                    "Error al verificar hash: {}",
+                    e
+                ))),
             }
-            Err(AppError::DatoInvalido(
-                "Contrasena incorrecta. ".to_string(),
-            ))
         }
 
         pub fn generar_token(&self) -> String {
@@ -3148,16 +3180,17 @@ pub mod servicio {
             ServicioDeUsuarios { repositorio }
         }
 
-        pub fn verificar_usuario(&self, contra: &str, usuario: String) -> AppResult<()> {
+        pub fn verificar_usuario(&self, contra: &str, usuario: &str) -> AppResult<String> {
             let usuario = self.repositorio.obtener(&usuario)?;
             return match usuario.verificar_hash(contra) {
-                Ok(_) => Ok(()),
+                Ok(token) => Ok(token),
                 Err(e) => Err(AppError::DatoInvalido(format!("{}", e))),
             };
         }
 
         pub fn agregar(&mut self, nombre: String, contra: String, rol: String) -> AppResult<()> {
-            if let Ok(_) = self.existe(&nombre) {
+            if self.existe(&nombre)? {
+                println!("Existe, 3170");
                 return Err(AppError::DatoInvalido(format!(
                     "El usuario: {}, ya existe",
                     nombre
@@ -3180,7 +3213,7 @@ pub mod servicio {
         }
 
         pub fn eliminar(&mut self, nombre: &str) -> AppResult<()> {
-            if let Ok(true) = self.existe(nombre) {
+            if !self.existe(nombre)? {
                 return Err(AppError::DatoInvalido(format!(
                     "No existe el usuario: {}",
                     nombre
@@ -3198,19 +3231,24 @@ pub mod servicio {
             return self.repositorio.id_con_nombre(&nombre);
         }
 
-        pub fn obtener(&self, busqueda: &str) -> AppResult<(String, String)> {
-            if let Ok(true) = self.existe(busqueda) {
+        pub fn obtener(&self, busqueda: &str) -> AppResult<(String, String, String)> {
+            if !self.existe(busqueda)? {
+                println!("3213");
                 return Err(AppError::DatoInvalido(format!(
                     "El usuario: {}, no existe",
                     busqueda
                 )));
             }
             let usuario = self.repositorio.obtener(busqueda)?;
-            Ok((usuario.obtener_nombre(), usuario.obtener_rol()))
+            Ok((
+                usuario.obtener_id(),
+                usuario.obtener_nombre(),
+                usuario.obtener_rol(),
+            ))
         }
 
         pub fn listar(&self) -> AppResult<Vec<String>> {
-            return self.listar();
+            return self.repositorio.listar();
         }
 
         pub fn buscar(&self, busqueda: &String) -> AppResult<Vec<String>> {
