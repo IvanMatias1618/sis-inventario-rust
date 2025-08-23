@@ -107,7 +107,8 @@ async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
             )
             .service(
                 web::resource("/insumos/valor").route(web::get().to(valor_de_insumo_manejador)),
-            )
+            ) //.wrap(GuardianDeAcceso)  // descomentemos cuando se envie el token en
+            // los headers del servicio, y movamos los enpoints de consulta arriba
             .service(
                 web::resource("/insumos/editar/{nombre}")
                     .route(web::put().to(editar_insumo_manejador))
@@ -631,6 +632,128 @@ pub mod actix {
     use serde::{Deserialize, Serialize};
     use std::sync::Arc;
     use tokio::sync::Mutex;
+
+    pub mod middleware {
+
+        use crate::negocio::{Acciones, Entidad};
+        use actix_service::{Service, Transform};
+        use actix_web::{
+            Error, HttpResponse,
+            body::EitherBody,
+            dev::{ServiceRequest, ServiceResponse},
+        };
+        use futures::future::{LocalBoxFuture, Ready, ok};
+        use std::{
+            pin::Pin,
+            rc::Rc,
+            task::{Context, Poll},
+        };
+
+        pub struct GuardianDeAcceso;
+
+        impl<S, B> Transform<S, ServiceRequest> for GuardianDeAcceso
+        where
+            S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+            B: 'static,
+        {
+            type Response = ServiceResponse<EitherBody<B>>;
+            type Error = Error;
+            type InitError = ();
+            type Transform = GuardianMiddleware<S>;
+            type Future = Ready<Result<Self::Transform, Self::InitError>>;
+
+            fn new_transform(&self, service: S) -> Self::Future {
+                ok(GuardianMiddleware {
+                    service: Rc::new(service),
+                })
+            }
+        }
+
+        pub struct GuardianMiddleware<S> {
+            service: Rc<S>,
+        }
+
+        impl<S, B> Service<ServiceRequest> for GuardianMiddleware<S>
+        where
+            S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+            B: 'static,
+        {
+            type Response = ServiceResponse<EitherBody<B>>;
+            type Error = Error;
+            type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+            fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                self.service.poll_ready(cx)
+            }
+
+            fn call(&self, req: ServiceRequest) -> Self::Future {
+                let svc = Rc::clone(&self.service);
+                let path = req.path().to_string();
+                let token = req
+                    .headers()
+                    .get("Authorization")
+                    .and_then(|h| h.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+
+                Box::pin(async move {
+                    match crate::actix::middleware::verificar_permiso(&path, &token) {
+                        Ok(_) => {
+                            // Respuesta exitosa mapeada al Left de EitherBody
+                            let res: ServiceResponse<B> = svc.call(req).await?;
+                            Ok(res.map_into_left_body())
+                        }
+                        Err(e) => {
+                            // Error convertido al Right de EitherBody
+                            let res = req.into_response(HttpResponse::Forbidden().body(e));
+                            Ok(res.map_into_right_body())
+                        }
+                    }
+                })
+            }
+        }
+
+        fn parsear_ruta(ruta: &str) -> Result<(Entidad, Acciones), String> {
+            let partes: Vec<&str> = ruta.trim_start_matches('/').split('/').collect();
+
+            if partes.len() != 2 {
+                return Err("Ruta inválida: se esperaba /entidad/accion".to_string());
+            }
+
+            let entidad = match partes[0] {
+                "receta" => Entidad::Receta,
+                "insumo" => Entidad::Insumo,
+                "usuario" => Entidad::Usuario,
+                _ => return Err(format!("Entidad desconocida: {}", partes[0])),
+            };
+
+            let accion = match partes[1] {
+                "crear" => Acciones::Crear,
+                "editar" => Acciones::Editar,
+                "eliminar" => Acciones::Eliminar,
+                _ => return Err(format!("Acción desconocida: {}", partes[1])),
+            };
+
+            Ok((entidad, accion))
+        }
+
+        pub fn verificar_permiso(ruta: &str, token: &str) -> Result<(), String> {
+            let (entidad, accion) = parsear_ruta(ruta)?;
+            let rol = match crate::negocio::verificar_token(token) {
+                Ok(r) => r,
+                Err(e) => return Err(format!("Acceso denegado: {}", e)),
+            };
+
+            if crate::negocio::puede_operar(entidad, rol, accion) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "El rol {:?} no tiene permiso para realizar {:?} sobre {:?}",
+                    rol, accion, entidad
+                ))
+            }
+        }
+    }
 
     #[derive(Serialize, Deserialize)]
     pub struct CrearUsuarioPeticion {
@@ -1639,7 +1762,9 @@ pub mod negocio {
                     "La lista de ingredientes esta vacia".to_string(),
                 ));
             }
+
             self.ingredientes = ingredientes;
+
             Ok(())
         }
     }
@@ -1782,7 +1907,64 @@ pub mod negocio {
         empleado: Uuid,
     }
 
-    use rand::Rng;
+    #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+    pub enum Entidad {
+        Insumo,
+        Receta,
+        Usuario,
+    }
+
+    #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+    pub enum Acciones {
+        Crear,
+        Eliminar,
+        Editar,
+    }
+
+    #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+    pub enum Rol {
+        Admin,
+        Invitado,
+        Usuario,
+    }
+
+    fn listar_permisos() -> HashMap<Entidad, HashMap<Rol, Vec<Acciones>>> {
+        let mut permisos = HashMap::new();
+        let mut receta_permisos = HashMap::new();
+        receta_permisos.insert(
+            Rol::Admin,
+            vec![Acciones::Crear, Acciones::Editar, Acciones::Eliminar],
+        );
+        receta_permisos.insert(Rol::Usuario, vec![Acciones::Crear, Acciones::Editar]);
+        permisos.insert(Entidad::Receta, receta_permisos);
+        let mut permisos_insumos = HashMap::new();
+        permisos_insumos.insert(
+            Rol::Admin,
+            vec![Acciones::Crear, Acciones::Editar, Acciones::Eliminar],
+        );
+        permisos_insumos.insert(Rol::Usuario, vec![Acciones::Crear, Acciones::Editar]);
+        permisos.insert(Entidad::Insumo, permisos_insumos);
+        let mut permisos_usuarios = HashMap::new();
+        permisos_usuarios.insert(
+            Rol::Admin,
+            vec![Acciones::Crear, Acciones::Editar, Acciones::Eliminar],
+        );
+        permisos
+    }
+
+    pub fn puede_operar(entidad: Entidad, rol: Rol, accion: Acciones) -> bool {
+        PERMISOS
+            .get(&entidad)
+            .and_then(|roles| roles.get(&rol))
+            .map_or(false, |acciones| acciones.contains(&accion))
+    }
+
+    use once_cell::sync::Lazy;
+    use std::collections::HashMap;
+
+    pub static PERMISOS: Lazy<HashMap<Entidad, HashMap<Rol, Vec<Acciones>>>> =
+        Lazy::new(|| listar_permisos());
+
     pub struct Usuario {
         id: String,
         nombre: String,
@@ -1801,7 +1983,6 @@ pub mod negocio {
                 return Err(AppError::DatoInvalido("El rol esta vacio".to_string()));
             }
 
-            use bcrypt::hash;
             let contraseña = hash(psswd, 12).expect("Error al encriptar la contraseña");
             Ok(Usuario {
                 id: Uuid::new_v4().to_string(),
@@ -1866,8 +2047,23 @@ pub mod negocio {
             token
         }
     }
-}
 
+    pub fn verificar_token(token: &str) -> Result<Rol, String> {
+        if token.len() != 8 {
+            return Err("Token inválido: longitud incorrecta".to_string());
+        }
+
+        let rol_str = &token[2..4];
+
+        let rol = match rol_str {
+            "ad" => Rol::Admin,
+            "us" => Rol::Usuario,
+            "in" => Rol::Invitado,
+            _ => return Err("Rol desconocido en el token".to_string()),
+        };
+        Ok(rol)
+    }
+}
 pub mod repositorio {
 
     //REPOSITORIO: Aqui se desglosa la logica para la persistencia de datos.
@@ -2491,8 +2687,7 @@ pub mod repositorio {
                     PRIMARY KEY (insumo_id),
                     PRIMARY KEY (proveedor_id),
                     FOREIGN KEY (insumo_id) REFERENCES insumos(id) ON DELETE CASCADE,
-                    FOREIGN KEY (producto_id) REFERENCES proveedores(id) ON DELETE CASCADE
-                    
+                    FOREIGN KEY (producto_id) REFERENCES proveedores(id) ON DELETE CASCADE                  
                 )",
                 [],
             )?;
@@ -2662,7 +2857,6 @@ pub mod repositorio {
                 _ => AppError::DbError(e),
             })
         }
-
         fn listar(&self) -> AppResult<Vec<String>> {
             let con = self.conexion.lock().map_err(|e| {
                 AppError::ErrorPersonal(format!("error al bloquear la conexion: {}", e))
@@ -2677,6 +2871,7 @@ pub mod repositorio {
         }
     }
 }
+
 pub mod servicio {
     //SERVICIO: proporciona funciones usables por los comandos para conectarse a repositorio y verificar las existencias de productos antes de la creacion de una.
     // Además provee informacion de consulta para los comandos.
