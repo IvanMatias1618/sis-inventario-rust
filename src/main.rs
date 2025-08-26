@@ -3,259 +3,285 @@
 //    B: Queda pendiente la consulta de insumo_en_recetas dentro de repositorio.
 // }
 
-use actix_web::{App, HttpResponse, HttpServer, guard, web};
-use negocio::AppError;
+// FN_MAIN:  => {
+// RUN: CLI: was the first aproaching on the project. to interact with the backend while his first weeks.
+// RUN: || SERVER: since the main program's goal is be a Server WLAN for an front as web page and Desktop app.
+//}
+use negocio::AppError; //ERRORS: since Rust providess Result we can handle more propialy where and how to manage this errors.
 use std::env;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::Mutex; // Rust doesn't provides async main functions by default.
 
 #[tokio::main]
 async fn main() -> Result<(), AppError> {
     let argumentos: Vec<String> = env::args().collect();
     if argumentos.len() > 1 && argumentos[1] == "server" {
         println!("Iniciando el servidor Http...");
-        correr_servidor().await?
+        submainfunctions::correr_servidor().await?
     } else {
         println!("Iniciando la linea de comandos.");
-        correr_cli()?;
+        submainfunctions::correr_cli()?;
     }
     Ok(())
 }
 
-async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
-    use crate::repositorio;
-    use crate::servicio;
-    use actix::{
-        buscar_insumo_manejador, crear_insumo_manejador, crear_receta_manejador,
-        editar_insumo_manejador, eliminar_insumo_manejador, valor_de_insumo_manejador,
-        ver_todos_los_insumos_manejador,
-    };
-    use actix_cors::Cors;
-    use actix_web::{HttpResponse, Responder, http, web};
+// Here we can add more ways to operate this programs.
+// FIRST: We'll need to build an struct from the mod 'repositorio' (repository) for each Table.
+// SECOND: we need to build an service using this repositorory struct.
+// THIRD: use a layer to operate the service.
+pub mod submainfunctions {
 
-    //Cargamos de repositorio (inyeccion de dependencias).:
-    let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
-        Ok(almacen) => almacen,
-        Err(e) => {
-            println!(
-                "Error al abrir la base de datos para el almacen\nError: {}",
-                e
-            );
-            return Err(e);
-        }
-    };
-    let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
-        Ok(recetario) => recetario,
-        Err(e) => {
-            println!(
-                "Error al abrir la base de datos para el recetario\nError: {}",
-                e
-            );
-            return Err(e);
-        }
-    };
-    let usuario_repo = match repositorio::UsuariosDb::nuevo("cafeteria") {
-        Ok(repo) => repo,
-        Err(e) => {
-            println!(
-                "Error al abrir la base de datos para Usuarios\nError: {}",
-                e
-            );
-            return Err(e);
-        }
-    };
+    // (fn)RUN_SERVER:
+    pub async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
+        use crate::actix::{
+            buscar_insumo_manejador, crear_insumo_manejador, crear_receta_manejador,
+            editar_insumo_manejador, eliminar_insumo_manejador, valor_de_insumo_manejador,
+            ver_todos_los_insumos_manejador,
+        };
+        use crate::repositorio;
+        use crate::servicio;
+        use actix_cors::Cors;
+        use actix_web::{App, HttpResponse, HttpServer, Responder, guard, http, web};
 
-    println!("Almacen, Recetarioy  Usuarios cargados correctamente");
+        //Cargamos de repositorio (inyeccion de dependencias).:
+        let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
+            Ok(almacen) => almacen,
+            Err(e) => {
+                println!(
+                    "Error al abrir la base de datos para el almacen\nError: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
+        let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
+            Ok(recetario) => recetario,
+            Err(e) => {
+                println!(
+                    "Error al abrir la base de datos para el recetario\nError: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
+        let usuario_repo = match repositorio::UsuariosDb::nuevo("cafeteria") {
+            Ok(repo) => repo,
+            Err(e) => {
+                println!(
+                    "Error al abrir la base de datos para Usuarios\nError: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
 
-    //Envolvemos almacen en Box para que sea aceptado por Servicio.
-    // Envolvemos en Mutex para permitir la mutabilidad segura.
-    // Envolvemos en Arc para multihilo.
-    let servicio_de_almacen = Arc::new(Mutex::new(servicio::ServicioDeAlmacen::nuevo(Box::new(
-        almacen,
-    ))));
-    let servicio_de_recetas = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(Box::new(
-        recetario,
-    ))));
-    let servicio_de_usuarios = Arc::new(Mutex::new(servicio::ServicioDeUsuarios::nuevo(Box::new(
-        usuario_repo,
-    ))));
+        println!("Almacen, Recetarioy  Usuarios cargados correctamente");
 
-    //Iniciar el server:
+        //Envolvemos almacen en Box para que sea aceptado por Servicio.
+        // Envolvemos en Mutex para permitir la mutabilidad segura.
+        // Envolvemos en Arc para multihilo.
+        let servicio_de_almacen = Arc::new(Mutex::new(servicio::ServicioDeAlmacen::nuevo(
+            Box::new(almacen),
+        )));
+        let servicio_de_recetas = Arc::new(Mutex::new(servicio::ServicioDeRecetas::nuevo(
+            Box::new(recetario),
+        )));
+        let servicio_de_usuarios = Arc::new(Mutex::new(servicio::ServicioDeUsuarios::nuevo(
+            Box::new(usuario_repo),
+        )));
 
-    HttpServer::new(move || {
-        let almacen_info = servicio_de_almacen.clone();
-        let recetas_info = servicio_de_recetas.clone();
-        let usuarios_info = servicio_de_usuarios.clone();
+        //Iniciar el server:
 
-        let cors = Cors::default()
-            .allowed_origin_fn(|_origin, _req_head| true)
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![http::header::CONTENT_TYPE, http::header::ACCEPT])
-            .supports_credentials()
-            .max_age(3600);
+        HttpServer::new(move || {
+            let almacen_info = servicio_de_almacen.clone();
+            let recetas_info = servicio_de_recetas.clone();
+            let usuarios_info = servicio_de_usuarios.clone();
 
-        App::new()
-            .wrap(cors)
-            .app_data(web::Data::new(almacen_info))
-            .app_data(web::Data::new(recetas_info))
-            .app_data(web::Data::new(usuarios_info))
-            .service(web::resource("/insumos/crear").route(web::post().to(crear_insumo_manejador)))
-            .service(web::resource("/insumos/buscar").route(web::get().to(buscar_insumo_manejador)))
-            .service(
-                web::resource("/insumos/todos")
-                    .route(web::get().to(ver_todos_los_insumos_manejador)),
-            )
-            .service(
-                web::resource("/insumos/valor").route(web::get().to(valor_de_insumo_manejador)),
-            ) //.wrap(GuardianDeAcceso)  // descomentemos cuando se envie el token en
-            // los headers del servicio, y movamos los enpoints de consulta arriba
-            .service(
-                web::resource("/insumos/editar/{nombre}")
-                    .route(web::put().to(editar_insumo_manejador))
-                    .route(
-                        web::route()
-                            .guard(guard::Method(http::Method::OPTIONS))
-                            .to(|| async { HttpResponse::Ok().finish() }),
-                    ),
-            )
-            .service(
-                web::resource("/insumos/{insumo}")
-                    .route(web::delete().to(eliminar_insumo_manejador)),
-            )
-            .service(web::resource("/recetas/crear").route(web::post().to(crear_receta_manejador)))
-            .service(
-                web::resource("/recetas/todos")
-                    .route(web::get().to(actix::listar_recetas_manejador)),
-            )
-            .service(
-                web::resource("/recetas/buscar")
-                    .route(web::get().to(actix::buscar_receta_manejador)),
-            )
-            .service(
-                web::resource("/recetas/valor").route(web::get().to(actix::valor_receta_manejador)),
-            )
-            .service(
-                web::resource("/recetas/editar/{nombre}")
-                    .route(web::put().to(actix::editar_receta_manejador))
-                    .route(
-                        web::route()
-                            .guard(guard::Method(http::Method::OPTIONS))
-                            .to(|| async { HttpResponse::Ok().finish() }),
-                    ),
-            )
-            .service(
-                web::resource("/recetas/{receta}")
-                    .route(web::delete().to(actix::eliminar_receta_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/crear")
-                    .route(web::post().to(actix::crear_usuario_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/todos")
-                    .route(web::get().to(actix::listar_usuarios_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/buscar")
-                    .route(web::get().to(actix::buscar_usuario_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/valor")
-                    .route(web::get().to(actix::valor_de_usuario_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/{usuario}")
-                    .route(web::delete().to(actix::eliminar_usuario_manejador)),
-            )
-            .service(
-                web::resource("/usuarios/iniciar_sesion")
-                    .route(web::post().to(actix::iniciar_sesion_manejador)),
-            )
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await?;
-    Ok(())
-}
+            let cors = Cors::default()
+                .allowed_origin_fn(|_origin, _req_head| true)
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![http::header::CONTENT_TYPE, http::header::ACCEPT])
+                .supports_credentials()
+                .max_age(3600);
 
-fn correr_cli() -> Result<(), crate::negocio::AppError> {
-    use crate::cli;
-    use crate::repositorio;
-    use crate::servicio;
+            App::new()
+                .wrap(cors)
+                .app_data(web::Data::new(almacen_info))
+                .app_data(web::Data::new(recetas_info))
+                .app_data(web::Data::new(usuarios_info))
+                .service(
+                    web::scope("")
+                        .service(
+                            web::resource("/insumos/buscar")
+                                .route(web::get().to(buscar_insumo_manejador)),
+                        )
+                        .service(
+                            web::resource("/insumos/todos")
+                                .route(web::get().to(ver_todos_los_insumos_manejador)),
+                        )
+                        .service(
+                            web::resource("/insumos/valor")
+                                .route(web::get().to(valor_de_insumo_manejador)),
+                        )
+                        .service(
+                            web::resource("/recetas/todos")
+                                .route(web::get().to(crate::actix::listar_recetas_manejador)),
+                        )
+                        .service(
+                            web::resource("/recetas/buscar")
+                                .route(web::get().to(crate::actix::buscar_receta_manejador)),
+                        )
+                        .service(
+                            web::resource("/recetas/valor")
+                                .route(web::get().to(crate::actix::valor_receta_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/todos")
+                                .route(web::get().to(crate::actix::listar_usuarios_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/buscar")
+                                .route(web::get().to(crate::actix::buscar_usuario_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/valor")
+                                .route(web::get().to(crate::actix::valor_de_usuario_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/iniciar_sesion")
+                                .route(web::post().to(crate::actix::iniciar_sesion_manejador)),
+                        ),
+                )
+                .service(
+                    web::scope("")
+                        .wrap(crate::actix::middleware::GuardianDeAcceso) //ACTIVAMOS MIDDLEWARE
+                        .service(
+                            web::resource("/insumos/editar/{nombre}")
+                                .route(web::put().to(editar_insumo_manejador))
+                                .route(
+                                    web::route()
+                                        .guard(guard::Method(http::Method::OPTIONS))
+                                        .to(|| async { HttpResponse::Ok().finish() }),
+                                ),
+                        )
+                        .service(
+                            web::resource("/insumos/{insumo}")
+                                .route(web::delete().to(eliminar_insumo_manejador)),
+                        )
+                        .service(
+                            web::resource("/insumos/crear")
+                                .route(web::post().to(crear_insumo_manejador)),
+                        )
+                        .service(
+                            web::resource("/recetas/crear")
+                                .route(web::post().to(crear_receta_manejador)),
+                        )
+                        .service(
+                            web::resource("/recetas/editar/{nombre}")
+                                .route(web::put().to(crate::actix::editar_receta_manejador))
+                                .route(
+                                    web::route()
+                                        .guard(crate::guard::Method(http::Method::OPTIONS))
+                                        .to(|| async { HttpResponse::Ok().finish() }),
+                                ),
+                        )
+                        .service(
+                            web::resource("/recetas/{receta}")
+                                .route(web::delete().to(crate::actix::eliminar_receta_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/crear")
+                                .route(web::post().to(crate::actix::crear_usuario_manejador)),
+                        )
+                        .service(
+                            web::resource("/usuarios/{usuario}")
+                                .route(web::delete().to(crate::actix::eliminar_usuario_manejador)),
+                        ),
+                )
+        })
+        .bind(("127.0.0.1", 8080))?
+        .run()
+        .await?;
+        Ok(())
+    }
 
-    let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
-        Ok(almacen) => almacen,
-        Err(e) => {
-            println!("Error al abrir la base de datos porque: {}", e);
-            return Err(e);
-        }
-    };
+    pub fn correr_cli() -> Result<(), crate::negocio::AppError> {
+        use crate::repositorio;
+        use crate::servicio;
 
-    let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
-        Ok(recetario) => recetario,
-        Err(e) => {
-            println!("Error al abrir la base de datos con el recetario: {}", e);
-            return Err(e);
-        }
-    };
+        let almacen = match repositorio::AlmacenEnMemoria::nuevo("cafeteria") {
+            Ok(almacen) => almacen,
+            Err(e) => {
+                println!("Error al abrir la base de datos porque: {}", e);
+                return Err(e);
+            }
+        };
 
-    println!("almacen cargado");
-    let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
-    let mut servicio_de_recetas = servicio::ServicioDeRecetas::nuevo(Box::new(recetario));
+        let recetario = match repositorio::RecetarioEnMemoria::nuevo("cafeteria") {
+            Ok(recetario) => recetario,
+            Err(e) => {
+                println!("Error al abrir la base de datos con el recetario: {}", e);
+                return Err(e);
+            }
+        };
 
-    println!(
-        "Hola :) \n Bienvenid@ a tu siste de Inventario demo: 1
+        println!("almacen cargado");
+        let mut servicio_de_almacen = servicio::ServicioDeAlmacen::nuevo(Box::new(almacen));
+        let mut servicio_de_recetas = servicio::ServicioDeRecetas::nuevo(Box::new(recetario));
+
+        println!(
+            "Hola :) \n Bienvenid@ a tu siste de Inventario demo: 1
              \nYa se ha creado el servicio de almacen y recetas."
-    );
+        );
 
-    //Creamos una funcion predeterminada que permita al usuario
-    fn reintentar_o_salir<F>(mut funcion: F) -> ()
-    where
-        F: FnMut() -> bool,
-    {
-        loop {
-            if funcion() {
+        //Creamos una funcion predeterminada que permita al usuario
+        fn reintentar_o_salir<F>(mut funcion: F) -> ()
+        where
+            F: FnMut() -> bool,
+        {
+            loop {
+                if funcion() {
+                    break;
+                }
+                if cli::reintentar() {
+                    continue;
+                }
                 break;
             }
-            if cli::reintentar() {
-                continue;
-            }
-            break;
         }
-    }
 
-    loop {
-        let res = cli::menu();
-        match res {
-            1 => break,
-            2 => reintentar_o_salir(|| cli::crear_insumo(&mut servicio_de_almacen)),
-            3 => reintentar_o_salir(|| {
-                cli::crear_receta(&mut servicio_de_recetas, &servicio_de_almacen)
-            }),
-            4 => reintentar_o_salir(|| cli::buscar_insumo(&servicio_de_almacen)),
-            5 => reintentar_o_salir(|| cli::buscar_receta(&servicio_de_recetas)),
-            6 => cli::ver_insumos(&servicio_de_almacen),
-            7 => cli::ver_recetas(&servicio_de_recetas),
-            8 => reintentar_o_salir(|| cli::valor_de_insumo(&servicio_de_almacen)),
-            9 => {
-                reintentar_o_salir(|| cli::receta_valor(&servicio_de_recetas, &servicio_de_almacen))
+        loop {
+            let res = cli::menu();
+            match res {
+                1 => break,
+                2 => reintentar_o_salir(|| super::cli::crear_insumo(&mut servicio_de_almacen)),
+                3 => reintentar_o_salir(|| {
+                    cli::crear_receta(&mut servicio_de_recetas, &servicio_de_almacen)
+                }),
+                4 => reintentar_o_salir(|| super::cli::buscar_insumo(&servicio_de_almacen)),
+                5 => reintentar_o_salir(|| super::cli::buscar_receta(&servicio_de_recetas)),
+                6 => super::cli::ver_insumos(&servicio_de_almacen),
+                7 => super::acli::ver_recetas(&servicio_de_recetas),
+                8 => reintentar_o_salir(|| super::cli::valor_de_insumo(&servicio_de_almacen)),
+                9 => reintentar_o_salir(|| {
+                    super::cli::receta_valor(&servicio_de_recetas, &servicio_de_almacen)
+                }),
+                10 => reintentar_o_salir(|| super::cli::eliminar_insumo(&mut servicio_de_almacen)),
+                11 => reintentar_o_salir(|| super::cli::eliminar_receta(&mut servicio_de_recetas)),
+                12 => reintentar_o_salir(|| {
+                    super::cli::producir_receta(&mut servicio_de_almacen, &servicio_de_recetas)
+                }),
+                13 => reintentar_o_salir(|| {
+                    super::cli::ingredientes_en_recetas(&servicio_de_recetas, &servicio_de_almacen)
+                }),
+                14 => reintentar_o_salir(|| super::cli::editar_insumo(&mut servicio_de_almacen)),
+                15 => reintentar_o_salir(|| {
+                    super::cli::editar_receta(&mut servicio_de_recetas, &servicio_de_almacen)
+                }),
+                _ => continue,
             }
-            10 => reintentar_o_salir(|| cli::eliminar_insumo(&mut servicio_de_almacen)),
-            11 => reintentar_o_salir(|| cli::eliminar_receta(&mut servicio_de_recetas)),
-            12 => reintentar_o_salir(|| {
-                cli::producir_receta(&mut servicio_de_almacen, &servicio_de_recetas)
-            }),
-            13 => reintentar_o_salir(|| {
-                cli::ingredientes_en_recetas(&servicio_de_recetas, &servicio_de_almacen)
-            }),
-            14 => reintentar_o_salir(|| cli::editar_insumo(&mut servicio_de_almacen)),
-            15 => reintentar_o_salir(|| {
-                cli::editar_receta(&mut servicio_de_recetas, &servicio_de_almacen)
-            }),
-            _ => continue,
         }
+        return Ok(());
     }
-    return Ok(());
 }
 
 pub mod cli {
@@ -630,6 +656,7 @@ pub mod actix {
     use crate::servicio::{ServicioDeAlmacen, ServicioDeRecetas, ServicioDeUsuarios};
     use actix_web::{HttpResponse, Responder, web};
     use serde::{Deserialize, Serialize};
+    use std::fmt::Debug;
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -762,7 +789,7 @@ pub mod actix {
         pub contra: String,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Serialize)]
     pub struct VerificarUsuario {
         nombre: String,
         contra: String,
@@ -795,7 +822,7 @@ pub mod actix {
 
     pub async fn iniciar_sesion_manejador(
         app_info_repositorio: web::Data<std::sync::Arc<tokio::sync::Mutex<ServicioDeUsuarios>>>,
-        query: web::Query<VerificarUsuario>,
+        query: web::Json<VerificarUsuario>,
     ) -> impl Responder {
         let mut repo = app_info_repositorio.lock().await;
         match comandos::iniciar_sesion(&mut repo, &query.nombre, &query.contra) {
