@@ -29,6 +29,9 @@ async fn main() -> Result<(), AppError> {
 // SECOND: we need to build an service using this repositorory struct.
 // THIRD: use a layer to operate the service.
 pub mod submainfunctions {
+    use actix_web::guard;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
 
     // (fn)RUN_SERVER:
     pub async fn correr_servidor() -> Result<(), crate::negocio::AppError> {
@@ -180,7 +183,7 @@ pub mod submainfunctions {
                                 .route(web::put().to(crate::actix::editar_receta_manejador))
                                 .route(
                                     web::route()
-                                        .guard(crate::guard::Method(http::Method::OPTIONS))
+                                        .guard(guard::Method(http::Method::OPTIONS))
                                         .to(|| async { HttpResponse::Ok().finish() }),
                                 ),
                         )
@@ -242,7 +245,7 @@ pub mod submainfunctions {
                 if funcion() {
                     break;
                 }
-                if cli::reintentar() {
+                if super::cli::reintentar() {
                     continue;
                 }
                 break;
@@ -250,17 +253,17 @@ pub mod submainfunctions {
         }
 
         loop {
-            let res = cli::menu();
+            let res = super::cli::menu();
             match res {
                 1 => break,
                 2 => reintentar_o_salir(|| super::cli::crear_insumo(&mut servicio_de_almacen)),
                 3 => reintentar_o_salir(|| {
-                    cli::crear_receta(&mut servicio_de_recetas, &servicio_de_almacen)
+                    super::cli::crear_receta(&mut servicio_de_recetas, &servicio_de_almacen)
                 }),
                 4 => reintentar_o_salir(|| super::cli::buscar_insumo(&servicio_de_almacen)),
                 5 => reintentar_o_salir(|| super::cli::buscar_receta(&servicio_de_recetas)),
                 6 => super::cli::ver_insumos(&servicio_de_almacen),
-                7 => super::acli::ver_recetas(&servicio_de_recetas),
+                7 => super::cli::ver_recetas(&servicio_de_recetas),
                 8 => reintentar_o_salir(|| super::cli::valor_de_insumo(&servicio_de_almacen)),
                 9 => reintentar_o_salir(|| {
                     super::cli::receta_valor(&servicio_de_recetas, &servicio_de_almacen)
